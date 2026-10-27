@@ -57,6 +57,24 @@ python tools/redact_screenshots.py
 - `host.js` 改动需**重启 Desktop** 或换文件名重装；`client.js` 改动刷新页面即生效（bundle revision 按 mtime/size 计算）。
 - 账号菜单没有菜单项槽位，那行入口是 DOM 嫁接（见 HANDOFF 坑 8）；升级 DSH 后入口消失先跑 `plugin-gui-entry-check.mjs` 看 `menuRows`。
 
+### 1.5 版本管理（强制）
+
+**每次推送都必须升级插件版本**，由 `tools/version-check.mjs` 在 pre-push 强制校验（`npm run prepare` 安装钩子；应急可 `git push --no-verify`）。
+
+```powershell
+node tools/version.mjs bump patch --note "修复 xxx"   # 改两处 package.json + 插入 CHANGELOG 条目
+node tools/version-check.mjs                        # 自检：版本已升 / 日志有条目 / 无 TODO 占位
+```
+
+- 版本号写在 `dsh2phone-dsh-plugin/package.json`（产品版本，DSH 插件管理器显示的就是它）与根 `package.json`（保持同步，便于打 tag）。`relay/` 与 `tunnel/` 保留各自独立版本，不属于发版范围。
+- 判断标准：
+  - **major**：已配对设备或部署需人工干预——cookie 格式变化、relay 协议不兼容、配置键重命名/删除、patch 行或目录结构变更导致必须重装。
+  - **minor**：新增向后兼容能力——新标签/新 Remote 方法/新设置项/新默认行为。
+  - **patch**：修复、UI 打磨、依赖升级、文档与工具调整。
+- 只改 `CHANGELOG.md` 的提交不触发升级要求；其他任何文件（含纯文档）都要求升版本。
+- 发版后打 tag：`git tag v<版本> && git push origin v<版本>`。
+- 沙箱/CI 里 git 可能无法执行钩子（会报 `sh.exe: couldn't create signal pipe`）：此时推送前**手动跑** `node tools/version-check.mjs`，再 `git push --no-verify`。
+
 ---
 
 ## 2. 架构速查

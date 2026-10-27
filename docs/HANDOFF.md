@@ -47,8 +47,10 @@
 | `tunnel/autostart.vbs.example` | 开机自启模板（装入用户 Startup 文件夹后隐藏窗口 + 崩溃自动重启，日志写 `tunnel.log`；真实 `.vbs` 含本机路径，已忽略） |
 | `shared/env.mjs` | **唯一的配置入口**：加载 `<repo>/.env`（并提供插件设置页用的 `updateEnvFile()` 原子写回），导出 `env()/envFlag()/requireEnv()` |
 | `.env.example` | 配置模板（入库）；`.env` 是真实值（忽略） |
-| `tools/check-env.mjs` | 打印实际生效的配置（密钥打码），启动前自检 |
+| `tools/check-env.mjs` | 打印实际生效的配置（密钥打码）+ 插件版本，启动前自检 |
 | `tools/plugin-config-check.mjs` | 设置页回归：缺配置 → configRequired、占位符识别、写 `.env` 保注释、probe 三段 |
+| `tools/version.mjs` | 升级插件版本（改两处 package.json）并在 `CHANGELOG.md` 顶部插入条目 |
+| `tools/version-check.mjs` | **每次推送强制升级版本**的校验器；pre-push 钩子（`tools/install-git-hooks.mjs` 安装）调用它 |
 | `tools/redact_screenshots.py` | 给 `docs/` 截图脱敏（模糊侧栏/账号区、遮盖二维码）；**更新截图后必须重跑** |
 | `deploy/nginx/dsh.location` | nginx 配置（已部署） |
 | `deploy/server/docker-compose.yml` | 服务器 compose（已部署，含 dsh-relay 服务 + state 卷） |
@@ -308,6 +310,7 @@ profile 里记录为 `"dsh2phone": "link:<REPO_DIR>/dsh2phone-dsh-plugin"`，行
 **脱敏截图**：`docs/` 下 9 张 GUI 截图已模糊侧栏（工作区/会话名、账号手机号）并遮盖二维码（内含公网 URL 与配对码）。重新跑 `plugin-gui-check.mjs` / `plugin-theme-check.mjs` 生成新图后，必须再跑 `python tools/redact_screenshots.py`。
 
 **仍需注意**：
+- **版本管理**：插件版本每次推送都要升（`node tools/version.mjs bump <type> --note "…"`），pre-push 钩子会拦；规则与幅度判断见 `CHANGELOG.md` 开头与 AGENTS.md §1.5。版本号在设置页底部显示，排查时先问这个。
 - 截图设备卡片里的 `IP 172.20.0.4`（内网/VPN 地址）与时间戳保留可见，属于演示所需；如需彻底隐藏请再扩 `QR_SHOTS` 之外的遮盖区域。
 - `deploy/server/tunnel.key` 仍在本机磁盘（旧的 Startup VBS 会读它）。`.env` 已含同一密钥；换成 `tunnel/autostart.vbs.example` 的新式自启后可以删除该文件。
 - 已安装的 Startup 副本 `dsh2phone-tunnel.vbs` **自带** `RELAY_URL`/`DSH_TUNNEL_KEY`，会覆盖 `.env`；改 `.env` 后要么同步改它，要么删掉那几行让它只读 `.env`。

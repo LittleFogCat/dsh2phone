@@ -4,8 +4,13 @@
 //
 // Secrets are masked. Exits non-zero when a required value is missing, so this
 // works as a pre-flight check before starting the tunnel or pairing a phone.
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ENV_FILE, REPO_ROOT, env } from "../shared/env.mjs";
+
+const pluginVersion = JSON.parse(
+  readFileSync(join(REPO_ROOT, "dsh2phone-dsh-plugin", "package.json"), "utf8"),
+).version;
 
 const mask = (value) => {
   if (!value) return "(unset)";
@@ -16,6 +21,7 @@ const mask = (value) => {
 const rows = [
   { name: "env file", value: ENV_FILE, note: existsSync(ENV_FILE) ? "found" : "MISSING — copy .env.example to .env" },
   { name: "repo root", value: REPO_ROOT, note: "" },
+  { name: "plugin version", value: pluginVersion, note: "bump before every push (see CHANGELOG.md)" },
   { name: "RELAY_URL", value: env("RELAY_URL"), required: true, note: "tunnel + plugin control plane" },
   { name: "PUBLIC_PAIR_URL", value: env("PUBLIC_PAIR_URL"), required: true, note: "QR code target" },
   { name: "DSH_TUNNEL_KEY", value: mask(env("DSH_TUNNEL_KEY")), required: true, note: "shared with the relay" },

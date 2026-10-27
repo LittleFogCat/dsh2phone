@@ -58,6 +58,16 @@ try {
 
 const NS = "dsh2phone";
 
+// The version shown in the settings tab; bumped by tools/version.mjs on every
+// push (enforced by tools/version-check.mjs).
+const PLUGIN_VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
+
 // Shape only: every value that depends on the deployment (or is a secret) is
 // resolved from .env in envValues(). Precedence, lowest to highest:
 //   DEFAULTS → plugin config from cordis.patch.yml → real environment / .env
@@ -277,6 +287,7 @@ class Dsh2PhoneService extends TypertRemoteService {
   configSnapshot() {
     const key = this.safeTunnelKey();
     return {
+      version: PLUGIN_VERSION,
       envFile: ENV_FILE,
       repoRoot: REPO_ROOT,
       values: {

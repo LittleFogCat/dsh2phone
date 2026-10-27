@@ -1,13 +1,16 @@
 {
   "name": "dsh2phone",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "",
   "main": "index.js",
   "directories": {
     "doc": "docs"
   },
   "scripts": {
+    "prepare": "node tools/install-git-hooks.mjs",
     "check-env": "node tools/check-env.mjs",
+    "version:bump": "node tools/version.mjs bump",
+    "version:check": "node tools/version-check.mjs",
     "relay": "node relay/src/relay.mjs",
     "tunnel": "node tunnel/src/tunnel.mjs",
     "test": "node tools/check-env.mjs && node tools/plugin-config-check.mjs && node tools/plugin-smoke.mjs"

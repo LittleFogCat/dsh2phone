@@ -195,9 +195,31 @@ name     = "dsh-auth-" + b64url(sha256(authority))
 secret   = ~/.dsh/.credentials.yaml 中 client-connection/browser-session 的 payload.secret
 ```
 
+## 版本与发布
+
+插件版本写在 `dsh2phone-dsh-plugin/package.json`（DSH 插件管理器显示的就是它）与根 `package.json`，变更记录见 [`CHANGELOG.md`](CHANGELOG.md)（最新版本在该文件顶部，插件「设置」页底部也会显示）。
+
+**每次推送都必须升级版本**：`tools/version-check.mjs` 以 pre-push 钩子强制检查（`npm run prepare` 安装；应急 `git push --no-verify`）。
+
+```powershell
+node tools/version.mjs bump patch --note "修复 xxx"   # 改两处版本号 + 在 CHANGELOG 顶部插入条目
+node tools/version-check.mjs                        # 自检（版本已升 / 条目存在 / 无 TODO 占位）
+git tag v1.1.1 && git push origin v1.1.1             # 可选：打 tag
+```
+
+升级幅度怎么选：
+
+| 幅度 | 什么时候用 | 例子 |
+|---|---|---|
+| **major** | 已配对设备或部署需要人工干预 | cookie 格式变化、relay 协议不兼容、配置键重命名、必须重装插件 |
+| **minor** | 新增向后兼容的能力 | 新标签、新 Remote 方法、新设置项、新的默认行为 |
+| **patch** | 修复与打磨 | bug 修复、UI/文案、依赖升级、文档与工具 |
+
+升级插件：重新 `install_bundle` 后重启 Desktop；装好后在「设置」页底部可以看到当前版本，方便核对。
+
 ## 隐私与仓库卫生
 
-- `.env`、`*.key`、`*.pem`、`*.log`、`.e2e-jar.txt`、设备注册表、`cordis.patch.yml`、`autostart.vbs` 全部在 `.gitignore` 内；`git add -A` 前建议先 `git add --dry-run --all` 扫一眼
+- `.env`、`*.key`、`*.pem`、`*.log`、`.e2e-jar.txt`、设备注册表、`autostart.vbs` 全部在 `.gitignore` 内；`git add -A` 前建议先 `git add --dry-run --all` 扫一眼
 - `docs/` 的域名/IP/SSH/本机路径已替换为 `<PUBLIC_DOMAIN>` 等占位符，真实值只在 `.env`
 - `docs/*.png` 已脱敏（侧栏模糊 + 二维码遮盖）；**重新生成截图后必须执行**：
 
@@ -226,7 +248,8 @@ dsh2phone-dsh-plugin/  host.js, client.js, relay-admin.js, dsh-cookie.js, cordis
 shared/env.mjs    .env 加载器（唯一配置入口）
 deploy/           nginx/*.location, server/docker-compose.yml, tls 自签脚本, prefix-test.mjs
 docs/             HANDOFF.md, ip-emergency-plan.md, ip-feasibility.md, proposal.md, *.png
-tools/            自检 / 冒烟 / e2e / 截图脱敏
+tools/            自检 / 冒烟 / e2e / 截图脱敏 / 版本管理
+CHANGELOG.md      版本变更记录（每次推送必须新增条目）
 ```
 
 ## 文档

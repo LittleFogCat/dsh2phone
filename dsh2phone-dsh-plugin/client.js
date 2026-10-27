@@ -661,7 +661,7 @@ window.__ModuleLoader__.load({
               h('span', { className: result.ok ? 'd2p-ok' : 'd2p-bad' },
                 result.ok ? `${t('正常')} · ${t('耗时 {ms} ms', { ms: result.ms })}` : t('失败')))))
           : null,
-        snap?.envFile ? h('p', { className: 'd2p-path' }, t('配置文件'), '：', snap.envFile) : null,
+        snap?.envFile ? h('p', { className: 'd2p-path' }, t('配置文件'), '：', snap.envFile, snap.version ? ` · dsh2phone v${snap.version}` : '') : null,
         h('details', { className: 'd2p-details' },
           h('summary', null, t('部署命令')),
           h('p', { className: 'd2p-hint' }, t('这些命令在服务器上执行，插件不会替你 SSH。')),
