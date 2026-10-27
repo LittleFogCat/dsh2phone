@@ -1,0 +1,43 @@
+# dsh2phone — IP 入口示例（复制到服务器 conf.d/server-ip.conf 后 reload）
+#
+# 前置条件：
+#   1) 已为 <SERVER_IP> 签发 Let's Encrypt IP 证书（shortlived profile，约 6 天）；
+#      证书路径默认为 /etc/letsencrypt/live/<SERVER_IP>/。
+#   2) 域名入口 conf.d/server.conf 保持原样；本文件只新增一个 443 server。
+#   3) 本文件被 nginx.conf 的 `include /etc/nginx/conf.d/*.conf` 自动加载。
+#
+# 作用：
+#   - 浏览器访问 https://<SERVER_IP>/... 时不发 SNI（IP 字面量），
+#     由 `default_server` 命中本块，使用 IP 证书，不再出现域名证书不匹配。
+#   - 只暴露 dsh2phone 的 /dsh-tunnel、/dsh-pair、/dsh/，
+#     不把主站其它 location 通过 IP 暴露出去。
+#
+# 注意：
+#   - 若 <SERVER_IP> 变更，证书路径、server_name、客户端配置都要一起改。
+#   - 不要修改 dsh.location 里的 `Host 127.0.0.1:43120` 与 Origin 剥离逻辑。
+#   - 不要在本块里 include 全部 *.location，除非你确实想让主站也走 IP。
+
+server {
+    listen 443 ssl default_server;
+    server_name <SERVER_IP>;
+
+    ssl_certificate     /etc/letsencrypt/live/<SERVER_IP>/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/<SERVER_IP>/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    root /usr/share/nginx/html;
+
+    # ACME http-01：80 → 443 跳转后仍能命中（Let's Encrypt 跟随跳转且不校验证书）。
+    location ^~ /.well-known/acme-challenge/ {
+        root /usr/share/nginx/html;
+        allow all;
+    }
+    location ~ /\. { deny all; }
+
+    # 只挂 dsh2phone 的三个入口。
+    include /etc/nginx/conf.d/dsh.location;
+
+    # 其它路径不通过 IP 暴露（dsh.location 没有 location /，这里显式兜底）。
+    location / { return 404; }
+}

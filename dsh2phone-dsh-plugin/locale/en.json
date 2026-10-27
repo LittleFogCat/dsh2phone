@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Phone Pairing",
+    "description": "Pair a phone to reach this DSH Web GUI over dsh2phone and manage the device whitelist (allow, deny, remove, panic)."
+  }
+}

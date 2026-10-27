@@ -1,0 +1,44 @@
+# nginx location for dsh2phone — included by server.conf via `include conf.d/*.location`.
+# Data plane: /dsh/ -> relay data port, WITH prefix strip (trailing slash on proxy_pass).
+# Host is pinned to the upstream loopback authority so DSH's request-trust fence
+# accepts it with zero DSH-side config; Origin is stripped because the browser
+# origin (https://<PUBLIC_DOMAIN>) cannot match the loopback Host by design.
+# Control plane: /dsh-tunnel -> relay WS endpoint (PC tunnel dials out here).
+
+location /dsh-tunnel {
+    proxy_pass http://dsh-relay:3201/tunnel;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+}
+
+location /dsh-pair {
+    proxy_pass http://dsh-relay:3200/pair;
+    proxy_http_version 1.1;
+    proxy_set_header Host 127.0.0.1:43120;
+    proxy_set_header Origin "";
+    proxy_read_timeout 180s;
+    proxy_buffering off;
+}
+
+location /dsh/ {
+    proxy_pass http://dsh-relay:3200/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host 127.0.0.1:43120;
+    proxy_set_header Origin "";
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+    proxy_cache off;
+    client_max_body_size 300m;
+}
+
+location = /dsh {
+    return 301 /dsh/;
+}

@@ -1,0 +1,47 @@
+# ============================================================================
+# dsh2phone — 入库红线：下面的路径含有密钥、凭据、机器相关信息或运行时状态，
+# 一律不提交。新增文件前先想清楚：它会不会泄露域名/服务器 IP/密钥/设备身份。
+# ============================================================================
+
+# ---- 依赖与缓存 ------------------------------------------------------------
+node_modules/
+.npm-cache/
+
+# ---- 私有配置（真实值只在 .env，模板是 .env.example）----------------------
+.env
+.env.*
+!.env.example
+# 插件安装行含本机绝对路径，由 tools/render-plugin-patch.mjs 生成
+dsh2phone-dsh-plugin/cordis.patch.yml
+# 开机自启脚本含本机绝对路径；模板见 tunnel/autostart.vbs.example
+tunnel/autostart.vbs
+
+# ---- 密钥与证书 ------------------------------------------------------------
+*.key
+*.pem
+*.p12
+deploy/tls/
+deploy/server/tunnel.key
+
+# ---- 运行时状态与凭据 ------------------------------------------------------
+# curl/浏览器 cookie jar（含有效的 DSH cookie 与设备 cookie）
+.e2e-jar.txt
+.gui-cookie.txt
+.dump_config.txt
+.e2e-state/
+.plugin-smoke-state/
+.gate-repro-state/
+# relay 设备注册表（设备 id / UA / IP）
+**/state/devices.json
+deploy/server/data/dsh-relay/state/
+
+# ---- 日志与诊断输出 --------------------------------------------------------
+*.log
+deploy/diag-firewall.out.txt
+deploy/*.out.txt
+
+# ---- 编辑器 / 系统 ---------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

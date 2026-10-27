@@ -1,0 +1,14 @@
+{
+  "name": "dsh2phone-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Public relay for dsh2phone: multiplexes nginx-fronted TCP traffic over the tunnel WebSocket",
+  "main": "src/relay.mjs",
+  "scripts": {
+    "start": "node src/relay.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "dsh2phone-tunnel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PC-side tunnel for dsh2phone: dials the relay outbound and forwards to the local DSH webserver",
+  "main": "src/tunnel.mjs",
+  "scripts": {
+    "start": "node src/tunnel.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

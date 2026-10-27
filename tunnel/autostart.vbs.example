@@ -1,0 +1,25 @@
+' dsh2phone tunnel autostart — hidden window, auto-restart on crash
+'
+' Install:
+'   1. replace __TUNNEL_DIR__ below with the absolute path of <repo>\tunnel
+'      (forward slashes are fine: D:/projects/dsh2phone/tunnel)
+'   2. copy this file to:
+'      %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\dsh2phone-tunnel.vbs
+'   3. run it once to confirm tunnel.log gets "relay online"
+'
+' Relay URL, upstream port and the tunnel key come from <repo>\.env; this
+' launcher stores no secrets and nothing machine-specific beyond the path.
+Option Explicit
+Dim sh, fso, tunnelDir
+tunnelDir = "__TUNNEL_DIR__"
+
+Set fso = CreateObject("Scripting.FileSystemObject")
+If Not fso.FolderExists(tunnelDir) Then WScript.Quit 1
+
+Set sh = CreateObject("WScript.Shell")
+sh.CurrentDirectory = tunnelDir
+
+Do While True
+  sh.Run "cmd /c node src\tunnel.mjs >> ..\tunnel.log 2>&1", 0, True
+  WScript.Sleep 5000
+Loop

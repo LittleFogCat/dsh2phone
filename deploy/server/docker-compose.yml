@@ -1,0 +1,79 @@
+services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"           # 将宿主机80端口映射到容器80端口
+      - "443:443"
+    volumes:
+      - ./conf/nginx:/etc/nginx:ro  # 挂载自定义配置
+      - ./www:/usr/share/nginx/html:ro        # 挂载统一前端构建产物
+      - /etc/letsencrypt:/etc/letsencrypt:ro  # 挂载证书文件
+      - /etc/nginx/conf.d:/hostconfd:ro          # 挂载宿主机配置文件
+    restart: always
+    networks:
+      - niu-network
+
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_ROOT_PASSWORD}
+    ports:
+      - "27017:27017" # 调试时开启，平时关闭
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - niu-network
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/27017"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  backend:
+    build:
+      context: ./data/backend
+      dockerfile: Dockerfile
+    container_name: backend
+    env_file:
+      - ./.env
+    ports:
+      - "3001:3001"
+    environment:
+      - MONGODB_URI=mongodb://root:${MONGODB_ROOT_PASSWORD}@mongodb:27017
+      - PORT=3001
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./conf/backend:/app/config:ro
+      - ./files/backend:/app/files:rw
+    networks:
+      - niu-network
+
+  dsh-relay:
+    build:
+      context: ./data/dsh-relay
+      dockerfile: Dockerfile
+    container_name: dsh-relay
+    env_file:
+      - ./.env
+    volumes:
+      - ./data/dsh-relay/state:/app/state
+    restart: unless-stopped
+    mem_limit: 128m
+    networks:
+      - niu-network
+
+networks:
+  niu-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
