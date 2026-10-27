@@ -136,7 +136,13 @@ function main() {
 
   const relevant = changed.filter((file) => file !== CHANGELOG_REL);
   if (relevant.length === 0) {
-    if (!quiet) console.log(`版本检查：只有 ${CHANGELOG_REL} 变化，无需升级版本。`);
+    if (!quiet) {
+      console.log(
+        changed.length === 0
+          ? `版本检查：工作区与 ${describeBaseline(baselineRef)} 一致，没有需要发版的改动。`
+          : `版本检查：只有 ${CHANGELOG_REL} 变化，无需升级版本。`,
+      );
+    }
     return;
   }
 

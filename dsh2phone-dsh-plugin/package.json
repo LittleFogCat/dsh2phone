@@ -1,6 +1,6 @@
 {
   "name": "dsh2phone",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "type": "module",
   "description": "Pair your phone with DSH over dsh2phone and manage the device whitelist from the UI",
