@@ -8,10 +8,9 @@
   },
   "scripts": {
     "check-env": "node tools/check-env.mjs",
-    "render-plugin-patch": "node tools/render-plugin-patch.mjs",
     "relay": "node relay/src/relay.mjs",
     "tunnel": "node tunnel/src/tunnel.mjs",
-    "test": "node tools/check-env.mjs && node tools/plugin-smoke.mjs"
+    "test": "node tools/check-env.mjs && node tools/plugin-config-check.mjs && node tools/plugin-smoke.mjs"
   },
   "keywords": [],
   "author": "",

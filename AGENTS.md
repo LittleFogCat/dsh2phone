@@ -18,12 +18,12 @@
   ```
   `.mjs` 入口在顶部 `import "../../shared/env.mjs";`（副作用：加载 `<repo>/.env`）。
 - 新增变量时**必须同步**：`.env`、`.env.example`、`tools/check-env.mjs`、README 的配置表。
-- 真实环境变量优先于 `.env`（不要改成反向，大量脚本依赖这个覆盖语义）。
-- `.env` 不入库；`.env.example` 只放占位符。
+- 真实环境变量优先于 `.env`（不要改成反向，大量脚本依赖这个覆盖语义）。插件「设置」保存后会把非预设键写回 `process.env` 使其立即生效；由启动器导出的键仍以它为准，并在界面上报告 `shadowed`。
+- `.env` 不入库；`.env.example` 只放占位符。需要写回 `.env` 时用 `shared/env.mjs` 的 `updateEnvFile()`（保留注释/行序，临时文件 + rename 原子替换），不要整文件重写。
 
 ### 1.2 隐私：入库前先想"这行会不会泄露"
 
-`.gitignore` 已覆盖：`.env*`（保留 `.env.example`）、`*.key`、`*.pem`、`deploy/tls/`、`deploy/server/tunnel.key`、`*.log`、`.e2e-jar.txt`、`.e2e-state/`、`.plugin-smoke-state/`、`**/state/devices.json`、`deploy/*.out.txt`、`dsh2phone-dsh-plugin/cordis.patch.yml`、`tunnel/autostart.vbs`。
+`.gitignore` 已覆盖：`.env*`（保留 `.env.example`）、`*.key`、`*.pem`、`deploy/tls/`、`deploy/server/tunnel.key`、`*.log`、`.e2e-jar.txt`、`.e2e-state/`、`.plugin-smoke-state/`、`**/state/devices.json`、`deploy/*.out.txt`、`tunnel/autostart.vbs`。
 
 新增任何"运行时产物 / 凭据 / 机器相关文件"时，同时补 `.gitignore`。提交前：
 
@@ -51,7 +51,8 @@ python tools/redact_screenshots.py
 ### 1.4 插件（DSH Desktop）
 
 - **不要**手改 profile 的 `package.json` / `cordis.patch.yml`；用 `plugin_manager install_bundle target=<REPO_DIR>\dsh2phone-dsh-plugin`。
-- `cordis.patch.yml` 是**生成物**（含绝对路径），模板是 `cordis.patch.example.yml`；换目录后跑 `npm run render-plugin-patch`。`config` 必须保持空，配置全部走 `.env`。
+- `cordis.patch.yml` **入库**，行名必须写成相对的 `./host.js`（loader 按 patch 文件位置解析成 `file:///…`）；**不要**改回绝对路径，也不要重新引入生成脚本。`config` 保持空，配置全部走 `.env`（插件「设置」标签会写回它）。
+- 新增/修改 Remote 方法时，除了写实现，还要加进文件末尾的 `markRemote` 列表，并同步 `client.js` 的 `createApi`、`tools/plugin-smoke.mjs` 的 `expected` 数组。
 - `host.js` 里的服务方法**不能**用 `#private` 字段/方法（cordis 用 Proxy 作 `this`，V8 品牌检查会失败）；Remote 方法用 `markRemote()` 打标。
 - `host.js` 改动需**重启 Desktop** 或换文件名重装；`client.js` 改动刷新页面即生效（bundle revision 按 mtime/size 计算）。
 - 账号菜单没有菜单项槽位，那行入口是 DOM 嫁接（见 HANDOFF 坑 8）；升级 DSH 后入口消失先跑 `plugin-gui-entry-check.mjs` 看 `menuRows`。
@@ -72,9 +73,9 @@ python tools/redact_screenshots.py
 | `deploy/server/data/dsh-relay/src/relay.mjs` | **同一份代码的部署副本**，两边必须逐字节一致 | 高（忘记同步=线上不一致） |
 | `tunnel/src/tunnel.mjs` | run/pair/devices/allow/deny/remove/panic、心跳看门狗（15s 检查 / 70s 静默重连） | 中 |
 | `tunnel/src/dsh-cookie.mjs` | cookie 铸造（CLI 侧） | 低（契约固定） |
-| `dsh2phone-dsh-plugin/host.js` | 8 个 Typert Remote 方法 + .env 配置 | 中 |
-| `dsh2phone-dsh-plugin/client.js` | 纯前端：弹窗、账号菜单行、轮询 `pairInspect` | 中 |
-| `shared/env.mjs` | `.env` 解析（无依赖） | 低（但所有端依赖它） |
+| `dsh2phone-dsh-plugin/host.js` | 12 个 Typert Remote 方法（配对 / 设备 / 设置）+ `.env` 配置解析 | 中 |
+| `dsh2phone-dsh-plugin/client.js` | 纯前端：三标签弹窗（配对 / 设备管理 / 设置）、账号菜单行、轮询 `pairInspect` | 中 |
+| `shared/env.mjs` | `.env` 解析 + `updateEnvFile()` 原子写回（无依赖） | 低（但所有端依赖它） |
 | `deploy/nginx/*` | 三条 location | 高（Host/Origin 不能动） |
 
 端口：relay 数据面 `3200`、控制面 `3201`；本机 DSH `43120`；本地仿真 nginx `9443`；tools 用 `13200/13201`、`13300/13301`。
@@ -87,13 +88,13 @@ python tools/redact_screenshots.py
 |---|---|
 | `relay/src/relay.mjs`（门禁/配对） | `node tools/gate-repro.mjs` → `node tools/relay-dedupe-check.mjs` → `node tools/relay-pages-theme-check.mjs`；改了协议还要 `node tools/plugin-smoke.mjs` |
 | `tunnel/*` | `node tools/plugin-smoke.mjs`（本地 relay + 假隧道全流程） |
-| `host.js` | `node tools/plugin-host-identity-check.mjs` + `plugin-smoke.mjs`；再重启 Desktop 用 `plugin-gui-check.mjs` |
+| `host.js` | `node tools/plugin-host-identity-check.mjs` + `plugin-config-check.mjs` + `plugin-smoke.mjs`；再重启 Desktop 用 `plugin-gui-check.mjs` |
 | `client.js` / 样式 | `plugin-gui-check.mjs`、`plugin-gui-entry-check.mjs`、`plugin-theme-check.mjs`（对比度） |
-| `.env` / `shared/env.mjs` | `npm run check-env` |
+| `.env` / `shared/env.mjs` | `npm run check-env` + `node tools/plugin-config-check.mjs` |
 | 文档截图 | `python tools/redact_screenshots.py` |
 | 公网链路（可选） | `plugin-e2e-pair.mjs` → `plugin-e2e-gate.mjs` → `plugin-dedupe-check.mjs` |
 
-一键冒烟：`npm test`（= `check-env` + `plugin-smoke`）。它会在 `13200/13201` 起一个本地 relay。
+一键冒烟：`npm test`（= `check-env` + `plugin-config-check` + `plugin-smoke`）。`plugin-smoke` 会在 `13200/13201` 起一个本地 relay。
 
 > GUI/e2e 脚本要求：DSH Desktop 正在运行（`http://127.0.0.1:43120`）、本机装了 Edge（Playwright `channel: "msedge"`）、`~/.dsh/.credentials.yaml` 存在。
 > 若脚本崩溃在 `spawn EPERM`，那是沙箱禁止管道而非代码问题——把 relay 作为独立进程起（`npm run relay`）后用 `SMOKE_EXTERNAL_RELAY=1 node tools/plugin-smoke.mjs`。
@@ -128,7 +129,7 @@ Copy-Item relay/src/relay.mjs deploy/server/data/dsh-relay/src/relay.mjs -Force
 
 ## 6. 已知坑（详见 HANDOFF 第六节）
 
-1. 工作区 link 插件在 Host 包树里不可解析 → patch 行名必须是 `file:///<abs>/host.js`。
+1. 工作区 link 插件在 Host 包树里不可解析 → patch 行名必须是相对的 `./host.js`（loader 会锚定成 `file:///…`）。
 2. client 包元数据按 `(baseUrl, loaderName)` 缓存到进程重启，解析失败缓存 `null`。
 3. Remote 方法内不能用 `#private`。
 4. `@deepseek-ai/*` 必须用 Host 自己的副本（`DSH_APP_DIR` + `createRequire`）。

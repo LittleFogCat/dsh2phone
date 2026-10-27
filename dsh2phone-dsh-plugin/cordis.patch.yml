@@ -1,0 +1,17 @@
+# dsh2phone plugin patch.
+#
+# `./host.js` is resolved by the loader relative to this file
+# (dsh-app-boot: anchorInsertedPluginNames → pathToFileURL), so the row works on
+# any machine and any checkout path — no generated copy, no absolute path.
+#
+# A workspace-linked plugin is not resolvable from the Host's own package tree,
+# so the entry point is addressed directly: the Loader resolves a path-like row
+# by walking up to the nearest package.json, which is this package
+# (client-modules locatePkgJson -> nearestPackage).
+#
+# `config` stays empty on purpose: relay URL, pairing URL, tunnel key and the
+# DSH app dir all come from <repo>/.env (editable in the plugin's 设置 tab).
+- insert:
+    - id: dsh2phone
+      name: ./host.js
+      config: {}

@@ -14,13 +14,23 @@
 //   2. <repo root>/.env   — normal local runs
 // A variable that already exists in the real environment always wins, so
 // `RELAY_URL=... node src/tunnel.mjs` keeps working as a one-off override.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Repository root — this file lives in <root>/shared/env.mjs. */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const ENV_FILE = process.env.DSH2PHONE_ENV_FILE || join(REPO_ROOT, ".env");
+
+// Names that existed in process.env before .env was loaded: a value the caller
+// (launcher, service manager, shell) exported. .env cannot override those, so
+// the settings tab reports them as "shadowed" instead of pretending they saved.
+const PRESET = new Set(Object.keys(process.env));
+
+/** @returns {Set<string>} names that came from the real environment */
+export function presetEnvKeys() {
+  return PRESET;
+}
 
 /**
  * Parse dotenv syntax: `KEY=value`, optional `export`, `#` comments, single or
@@ -114,3 +124,57 @@ export function requireEnv(name, hint) {
 
 // Load on import: callers only need `import "../shared/env.mjs";`.
 loadEnv();
+
+/**
+ * Render a value for a dotenv line: bare when safe, double-quoted otherwise.
+ * @param {string} value
+ */
+export function formatEnvValue(value) {
+  const text = String(value ?? "");
+  if (text !== "" && !/[\s#"']/u.test(text)) return text;
+  return `"${text.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"')}"`;
+}
+
+/**
+ * Update keys in a .env file in place, preserving comments, order and the
+ * file's existing line endings. Missing keys are appended under a marker
+ * comment; the write is atomic (temp file + rename).
+ *
+ * Used by the plugin's settings tab, which is why it must never rewrite a file
+ * wholesale: the user's comments are part of the file.
+ *
+ * @param {string} file
+ * @param {Record<string, string | number>} updates
+ * @returns {{ file: string, created: boolean, appended: string[] }}
+ */
+export function updateEnvFile(file, updates) {
+  const existed = existsSync(file);
+  const raw = existed ? readFileSync(file, "utf8") : "";
+  const eol = raw.includes("\r\n") ? "\r\n" : "\n";
+  const lines = raw === "" ? [] : raw.split(/\r?\n/u);
+  /** @type {Set<string>} */
+  const seen = new Set();
+
+  const next = lines.map((line) => {
+    const match = /^(\s*(?:export\s+)?)([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.*)$/u.exec(line);
+    if (!match) return line;
+    const [, prefix, key, separator] = match;
+    if (!Object.hasOwn(updates, key)) return line;
+    seen.add(key);
+    return `${prefix}${key}=${formatEnvValue(updates[key])}`;
+  });
+
+  const appended = Object.keys(updates).filter((key) => !seen.has(key));
+  if (appended.length > 0) {
+    if (next.length > 0 && next[next.length - 1].trim() !== "") next.push("");
+    next.push("# 由 dsh2phone 插件“设置”写入");
+    for (const key of appended) next.push(`${key}=${formatEnvValue(updates[key])}`);
+  }
+
+  const text = next.join(eol);
+  const temp = `${file}.tmp-${process.pid}`;
+  writeFileSync(temp, text.endsWith(eol) ? text : text + eol, "utf8");
+  renameSync(temp, file);
+  return { file, created: !existed, appended };
+}
+

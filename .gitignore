@@ -11,8 +11,6 @@ node_modules/
 .env
 .env.*
 !.env.example
-# 插件安装行含本机绝对路径，由 tools/render-plugin-patch.mjs 生成
-dsh2phone-dsh-plugin/cordis.patch.yml
 # 开机自启脚本含本机绝对路径；模板见 tunnel/autostart.vbs.example
 tunnel/autostart.vbs
 

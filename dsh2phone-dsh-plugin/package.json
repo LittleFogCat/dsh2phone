@@ -17,7 +17,6 @@
     "relay-admin.js",
     "dsh-cookie.js",
     "cordis.patch.yml",
-    "cordis.patch.example.yml",
     "locale/*.json",
     "icon.svg"
   ],

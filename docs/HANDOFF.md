@@ -45,10 +45,10 @@
 | `tunnel/pair.cmd` | CLI 配对入口（二维码 + 终端确认） |
 | `tunnel/devices.cmd` | 设备管理 |
 | `tunnel/autostart.vbs.example` | 开机自启模板（装入用户 Startup 文件夹后隐藏窗口 + 崩溃自动重启，日志写 `tunnel.log`；真实 `.vbs` 含本机路径，已忽略） |
-| `shared/env.mjs` | **唯一的配置入口**：加载 `<repo>/.env`，提供 `env()/envFlag()/requireEnv()` |
+| `shared/env.mjs` | **唯一的配置入口**：加载 `<repo>/.env`（并提供插件设置页用的 `updateEnvFile()` 原子写回），导出 `env()/envFlag()/requireEnv()` |
 | `.env.example` | 配置模板（入库）；`.env` 是真实值（忽略） |
 | `tools/check-env.mjs` | 打印实际生效的配置（密钥打码），启动前自检 |
-| `tools/render-plugin-patch.mjs` | 生成插件 `cordis.patch.yml`（含本机绝对路径，故不入库） |
+| `tools/plugin-config-check.mjs` | 设置页回归：缺配置 → configRequired、占位符识别、写 `.env` 保注释、probe 三段 |
 | `tools/redact_screenshots.py` | 给 `docs/` 截图脱敏（模糊侧栏/账号区、遮盖二维码）；**更新截图后必须重跑** |
 | `deploy/nginx/dsh.location` | nginx 配置（已部署） |
 | `deploy/server/docker-compose.yml` | 服务器 compose（已部署，含 dsh-relay 服务 + state 卷） |
@@ -119,15 +119,14 @@
 
 ### 结果
 
-左下角侧栏底部的**账号菜单**（点最底部账号行弹出，与"设置 / 意见反馈 / 退出登录"并列）里出现 **"配对手机"** 一行 → 弹窗显示二维码（host 端用 `qrcode` 生成 PNG dataURL）→ 手机扫码后 **DSH 内弹确认框**（设备名/IP）→ 允许后 relay 下发 cookie 并返回**手机入口页**（“进入 DSH”按钮 + 添加到主屏幕提示；`/dsh-pair` 本身也是已配对设备的入口页）→ 点按钮进入 `/dsh/`。弹窗内"设备管理"页可 allow/deny/remove/全部吊销。侧栏底部不再单独放按钮；CLI（pair.cmd 等）保持可用。
+左下角侧栏底部的**账号菜单**（点最底部账号行弹出，与"设置 / 意见反馈 / 退出登录"并列）里出现 **"配对手机"** 一行 → 弹窗有三个标签 **配对 / 设备管理 / 设置**。配对标签显示二维码（host 端用 `qrcode` 生成 PNG dataURL）→ 手机扫码后 **DSH 内弹确认框**（设备名/IP）→ 允许后 relay 下发 cookie 并返回**手机入口页**（“进入 DSH”按钮 + 添加到主屏幕提示；`/dsh-pair` 本身也是已配对设备的入口页）→ 点按钮进入 `/dsh/`。设备管理可 allow/deny/remove/全部吊销；**设置**可改连接信息、测试连通性、复制部署命令。侧栏底部不再单独放按钮；CLI（pair.cmd 等）保持可用。
 
 ### 插件位置与安装
 
 ```
 dsh2phone-dsh-plugin/
 ├─ package.json          # name: dsh2phone; dsh.bundle.patch + dsh.client(web, immediately)
-├─ cordis.patch.yml      # 生成的：插入 host 行（行名是 host.js 的 file:/// 绝对 URL，见下"坑 1"）— 已忽略
-├─ cordis.patch.example.yml # 模板；`node tools/render-plugin-patch.mjs` 生成上面那个
+├─ cordis.patch.yml      # 入库：插入 host 行，行名是相对的 ./host.js（见下"坑 1"）
 ├─ host.js               # Host 面：Typert Remote 服务（dsh2phone 命名空间）；配置全部来自 .env
 ├─ relay-admin.js        # relay 控制面 admin 客户端（hello / pair.* / devices.*）
 ├─ dsh-cookie.js         # 移植自 tunnel/src/dsh-cookie.mjs（secret/authority 参数化）
@@ -139,13 +138,14 @@ dsh2phone-dsh-plugin/
 安装（**不要**手改 profile 的 package.json / cordis.patch.yml）：
 
 ```
-node tools/render-plugin-patch.mjs        # 换目录/换机器后先重新生成 patch
 plugin_manager install_bundle target=<REPO_DIR>\dsh2phone-dsh-plugin
 ```
 
+patch 行用相对路径 `./host.js`，由 loader 按 patch 文件所在目录解析（`dsh-app-boot` 的 `anchorInsertedPluginNames` → `pathToFileURL`），因此**不需要生成脚本**，换机器/换目录都不用改。
+
 profile 里记录为 `"dsh2phone": "link:<REPO_DIR>/dsh2phone-dsh-plugin"`，行 id `include:dsh2phone`。
 
-### 配置（全部来自 `.env`，`cordis.patch.yml` 的 config 保持空）
+### 配置（`.env` 为准，插件「设置」标签可直接改）
 
 | `.env` 变量 | 作用 |
 |---|---|
@@ -158,16 +158,24 @@ profile 里记录为 `"dsh2phone": "link:<REPO_DIR>/dsh2phone-dsh-plugin"`，行
 | `DSH_APP_DIR` | DSH Desktop 安装目录（解析 `@deepseek-ai/*` 原生副本） |
 | `DSH2PHONE_ALLOW_INVALID_CERT` | `1` = 跳过 relay 证书校验（仅 IP 应急） |
 
-改完 `.env` 后：`node tools/check-env.mjs` 自检，再重启 Desktop（host.js 是进程内模块，不会热读）。
+优先级：`DEFAULTS` → `cordis.patch.yml` 的 config（现在为空）→ 真实环境变量 / `.env`。**`.env` 最高**，所以旧安装行里的残留 config 不会盖住设置页刚保存的值。
+
+「设置」标签的写回逻辑：
+- 校验分两档：格式错（缺 `wss://`、非法 URL、TTL 越界）**拒绝保存**；字段缺失或仍是 `.env.example` 占位值只提示、允许保存（可以先填一半）。
+- 写入用 `updateEnvFile()`：保留注释与行序，缺的键追加在末尾，`写临时文件 + rename` 保证原子性。
+- 由启动器导出的真实环境变量仍然优先；这类键保存后会出现在 `shadowed` 里并在界面上提示（重启 Desktop 或改系统环境变量才生效）。
+
+改完 `.env`（手工）后：`node tools/check-env.mjs` 自检；host.js 是进程内模块，手工改动仍需重启 Desktop 或重装插件。
 
 ### Remote 方法（namespace `dsh2phone`）
 
-`pairStart` / `pairInspect(id)` / `pairRespond(id, reqId, approved)` / `pairCancel(id)` / `devicesList` / `devicesSet(id,status)` / `devicesRemove(id)` / `devicesPanic`。
+`pairStart` / `pairInspect(id)` / `pairRespond(id, reqId, approved)` / `pairCancel(id)` / `devicesList` / `devicesSet(id,status)` / `devicesRemove(id)` / `devicesPanic` / `configGet` / `configSave(patch)` / `newTunnelKey` / `probe`。
 配对确认采用**轮询**（client 每 1.5s `pairInspect`）而非 host→client 推送事件，避免依赖 Typert 事件转发。
+`pairStart` 在配置不全时**不抛错**，返回 `{configRequired:true, issues:[{field,code,message}], snapshot}`，客户端据此切到设置标签并高亮对应字段。
 
 ### 踩过的坑（重要，改插件前必读）
 
-1. **工作区 link 插件无法从 Host 包树解析**：client-modules 扫描用 `entry.parent.tree.ctx.baseUrl` 定位包，工作区 link 的包在 Host 树里不存在 → client 模块不会进入启动图（`__DSH_BOOT__` 里没有该行，页面无任何报错）。解决：`cordis.patch.yml` 的行名写成 **`file:///D:/…/host.js`**，Loader 的 `nearestPackage` 会从文件向上找到本包 `package.json`。
+1. **工作区 link 插件无法从 Host 包树解析**：client-modules 扫描用 `entry.parent.tree.ctx.baseUrl` 定位包，工作区 link 的包在 Host 树里不存在 → client 模块不会进入启动图（`__DSH_BOOT__` 里没有该行，页面无任何报错）。解决：`cordis.patch.yml` 的行名写成 **`./host.js`**（相对 patch 文件；loader 的 `anchorInsertedPluginNames` 会转成 `file:///` 绝对 URL），Loader 的 `nearestPackage` 会从文件向上找到本包 `package.json`。用相对路径而不是写死绝对路径，仓库才能换机器直接用。
 2. **client 包元数据按 `(baseUrl, loaderName)` 缓存到进程重启**，解析失败会缓存 `null`。所以改行名后要重新 install（新 sourceKey），或重启 Desktop。另：client bundle 的 revision 由文件 mtime/size 计算，改 `client.js` 后新开页面即生效，无需重启。
 3. **Remote 服务方法里不能用 `#private` 方法/字段**：cordis 用 Proxy 作为 `this` 调用服务方法，V8 私有品牌检查失败，报 `Receiver must be an instance of class <X>`（错误发生在方法**内部**第一行私有调用处）。用普通方法（如 `closePair()`）即可。
 4. **`@deepseek-ai/*` 必须用 Host 自己的副本**：否则插件是第二份 cordis/typert 类，网关校验 Receiver 时身份不一致。host.js 先按 `DSH_APP_DIR` / `<execPath>/resources/app` 用 `createRequire` 解析，失败才回退普通 import。
@@ -281,25 +289,26 @@ profile 里记录为 `"dsh2phone": "link:<REPO_DIR>/dsh2phone-dsh-plugin"`，行
 
 ## 八、隐私与配置边界（2026-10-27 整理）
 
-**唯一配置入口**：`<repo>/.env`（模板 `.env.example` 入库）。`shared/env.mjs` 在启动时加载它，真实环境变量优先。
+**唯一配置入口**：`<repo>/.env`（模板 `.env.example` 入库）。`shared/env.mjs` 在启动时加载它；真实环境变量优先。
 `tunnel/*.cmd` 只设置 `DSH2PHONE_ENV_FILE`；`cordis.patch.yml` 的 `config` 为空；`relay.mjs` 在本地运行时也会尝试加载 `.env`（容器里用 compose 的 `env_file`）。
+插件「设置」标签通过 `configSave` 直接改写这份 `.env`（原子写、保留注释），保存后立即生效。
 
 | 曾经硬编码的位置 | 现在 |
 |---|---|
 | `tunnel/{start,pair,devices}.cmd` 的 `DSH_TUNNEL_KEY=` / `RELAY_URL=` | `.env` |
-| `dsh2phone-dsh-plugin/host.js` 的 `relayUrl/publicKeyUrl` 默认值 | `.env` 的 `RELAY_URL` / `PUBLIC_PAIR_URL` |
-| `cordis.patch.yml` 的 `relayUrl/publicKeyUrl/keyFile/allowInvalidCert` | `.env`（YAML 只剩本机绝对入口路径，且已忽略） |
+| `dsh2phone-dsh-plugin/host.js` 的 `relayUrl/publicKeyUrl` 默认值 | `.env` 的 `RELAY_URL` / `PUBLIC_PAIR_URL`（也可在设置页填） |
+| `cordis.patch.yml` 的 `relayUrl/publicKeyUrl/keyFile/allowInvalidCert` | `.env`；YAML 只剩相对的 `./host.js` 入口，入库即可用 |
 | `tunnel/src/tunnel.mjs` 的 `PUBLIC_PAIR_URL` 默认域名 | `.env`（缺失时报错而不是静默走公网） |
 | `tools/*.mjs` 的生产域名、`C:\Users\…` 应用路径、`deploy/server/tunnel.key` 相对路径 | `.env` 的 `PUBLIC_PAIR_URL` / `RELAY_URL` / `DSH_APP_DIR` / `DSH_TUNNEL_KEY` |
 | `deploy/nginx/server-ip.conf.example` 的真实 IP、`deploy/diag-firewall.ps1` 的绝对输出路径 | `<SERVER_IP>` 占位符 / `$PSScriptRoot` |
 | `docs/*.md` 的域名、服务器 IP、SSH 账号与私钥、本机路径 | `<PUBLIC_DOMAIN>` / `<SERVER_IP>` / `<SSH_USER>` / `<SSH_KEY>` / `<REPO_DIR>` 占位符 |
 
-**已忽略（`.gitignore`）**：`.env` / `.env.*`（保留 `.env.example`）、`dsh2phone-dsh-plugin/cordis.patch.yml`、`tunnel/autostart.vbs`、`*.key` `*.pem` `deploy/tls/`、`deploy/server/tunnel.key`、`.e2e-jar.txt`、`.e2e-state/`、`.plugin-smoke-state/`、`*state/devices.json`、`*.log`、`deploy/*.out.txt`。
+**已忽略（`.gitignore`）**：`.env` / `.env.*`（保留 `.env.example`）、`tunnel/autostart.vbs`、`*.key` `*.pem` `deploy/tls/`、`deploy/server/tunnel.key`、`.e2e-jar.txt`、`.e2e-state/`、`.plugin-smoke-state/`、`*state/devices.json`、`*.log`、`deploy/*.out.txt`。
 
 **脱敏截图**：`docs/` 下 9 张 GUI 截图已模糊侧栏（工作区/会话名、账号手机号）并遮盖二维码（内含公网 URL 与配对码）。重新跑 `plugin-gui-check.mjs` / `plugin-theme-check.mjs` 生成新图后，必须再跑 `python tools/redact_screenshots.py`。
 
 **仍需注意**：
 - 截图设备卡片里的 `IP 172.20.0.4`（内网/VPN 地址）与时间戳保留可见，属于演示所需；如需彻底隐藏请再扩 `QR_SHOTS` 之外的遮盖区域。
-- `deploy/server/tunnel.key` 仍在本机磁盘（旧的 Startup VBS 会读它）。`.env` 已含同一密钥；迁移到 `tools/render-plugin-patch.mjs` + 新 VBS 模板后可以删除该文件。
+- `deploy/server/tunnel.key` 仍在本机磁盘（旧的 Startup VBS 会读它）。`.env` 已含同一密钥；换成 `tunnel/autostart.vbs.example` 的新式自启后可以删除该文件。
 - 已安装的 Startup 副本 `dsh2phone-tunnel.vbs` **自带** `RELAY_URL`/`DSH_TUNNEL_KEY`，会覆盖 `.env`；改 `.env` 后要么同步改它，要么删掉那几行让它只读 `.env`。
 - 仓库首次推送前（`origin` 尚无任何提交），密钥从未进入 Git 历史；若曾把 `.env`/`tunnel.key` 推送到别处，应按泄露处理并轮换 `DSH_TUNNEL_KEY`（relay 里它是设备 cookie 的 HMAC 密钥）。

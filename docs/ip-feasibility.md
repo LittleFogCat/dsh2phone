@@ -394,7 +394,7 @@ docker exec nginx nginx -s reload
 
 - nginx 配置示例：[deploy/nginx/server-ip.conf.example](../deploy/nginx/server-ip.conf.example)
 - 现有域名入口：[deploy/nginx/dsh.location](../deploy/nginx/dsh.location)
-- 插件配置模板：[dsh2phone-dsh-plugin/cordis.patch.example.yml](../dsh2phone-dsh-plugin/cordis.patch.example.yml)（运行 `node tools/render-plugin-patch.mjs` 生成机器相关的 `cordis.patch.yml`）
-- 配置模板：[.env.example](../.env.example)（真实值只在本机 `.env`）
+- 插件安装：[dsh2phone-dsh-plugin/cordis.patch.yml](../dsh2phone-dsh-plugin/cordis.patch.yml)（入口为相对的 `./host.js`，无需生成）
+- 配置模板：[.env.example](../.env.example)（真实值只在本机 `.env`，也可在插件「设置」标签里改）
 - 隧道启动：[tunnel/start.cmd](../tunnel/start.cmd)、自启模板 [tunnel/autostart.vbs.example](../tunnel/autostart.vbs.example)
 - 交接文档：[docs/HANDOFF.md](HANDOFF.md)

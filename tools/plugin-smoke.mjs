@@ -56,7 +56,11 @@ const { createRequire } = await import("node:module");
 const hostReq = createRequire(`${process.env.DSH_APP_DIR.replaceAll("\\", "/")}/package.json`);
 const { remoteMethods } = hostReq("@deepseek-ai/dsh-typert-protocol");
 const markers = remoteMethods(Object.create(index.Dsh2PhoneService.prototype));
-const expected = ["pairStart", "pairInspect", "pairRespond", "pairCancel", "devicesList", "devicesSet", "devicesRemove", "devicesPanic"];
+const expected = [
+  "pairStart", "pairInspect", "pairRespond", "pairCancel",
+  "devicesList", "devicesSet", "devicesRemove", "devicesPanic",
+  "configGet", "configSave", "newTunnelKey", "probe",
+];
 const got = markers.map((m) => m.exportName ?? m.method).sort();
 if (JSON.stringify(got) !== JSON.stringify([...expected].sort())) fail("remoteMethods", new Error(`got ${JSON.stringify(got)}`));
 console.log("remoteMethods:", got.join(", "));

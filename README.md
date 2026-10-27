@@ -70,7 +70,7 @@ node deploy/prefix-test.mjs                     # 打开 https://127.0.0.1:9443/
 
 # B. 只看 relay 协议与配对流程（本地起 relay + 假隧道，不发真实请求）
 npm run relay                                   # :3200 数据面 / :3201 控制面
-npm test                                        # = check-env + plugin-smoke（自动在 13200/13201 起 relay）
+npm test                                        # = check-env + plugin-config-check + plugin-smoke（自动在 13200/13201 起 relay）
 ```
 
 完整链路（relay + tunnel）需要 nginx 或等效代理把 `/dsh/` 转到 relay 的 3200，见下一节。
@@ -90,11 +90,12 @@ nginx 需要三条 location（`/dsh-tunnel`、`/dsh-pair`、`/dsh/`），见 [`d
 ### 4. 安装 DSH 插件
 
 ```powershell
-npm run render-plugin-patch     # 生成机器相关的 cordis.patch.yml（不入库）
 plugin_manager install_bundle target=<REPO_DIR>\dsh2phone-dsh-plugin
 ```
 
-装好后 DSH 左下角**账号菜单**里出现"配对手机"。
+装好后 DSH 左下角**账号菜单**里出现"配对手机"。`cordis.patch.yml` 直接入库（入口写成相对的 `./host.js`，由 loader 按 patch 文件位置解析），**不需要任何生成脚本**，换机器/换目录都能用。
+
+配置不全时点开"配对手机"会自动切到**设置**标签，就地填写并保存即可（不需要手改 `.env` 或重启）。
 
 ### 5. 配对手机
 
@@ -103,6 +104,19 @@ plugin_manager install_bundle target=<REPO_DIR>\dsh2phone-dsh-plugin
 3. 手机看到"配对成功 / 进入 DSH"入口页 → 点"进入 DSH" → 浏览器菜单"添加到主屏幕"
 
 CLI 备用：`node tunnel/src/tunnel.mjs pair`（二维码打在终端 + Y/n 确认）。
+
+### 插件里的「设置」标签
+
+弹窗有三个标签：**配对 / 设备管理 / 设置**。
+
+| 功能 | 说明 |
+|---|---|
+| 连接信息表单 | `RELAY_URL`、`PUBLIC_PAIR_URL`、隧道密钥（可显示/隐藏、一键生成）、`authority`、cookie 有效期、跳过证书校验 |
+| 保存并应用 | 直接改写 `<repo>/.env`（保留原有注释与顺序），立即生效；被启动器导出的真实环境变量覆盖时会明确提示 |
+| 测试连通性 | 三段独立检测：本机 DSH、relay 控制面（顺带返回已配对设备数）、公网配对页，各自给出耗时/HTTP 状态/错误 |
+| 部署命令 | 服务器侧 `docker compose` + `nginx -t` 命令，一键复制（插件不会替你 SSH） |
+
+配置缺失或仍是 `.env.example` 占位值时，配对页不会再报死胡同错误，而是自动跳到设置并高亮缺哪几项。
 
 ## 配置项
 
@@ -119,20 +133,20 @@ CLI 备用：`node tunnel/src/tunnel.mjs pair`（二维码打在终端 + Y/n 确
 | `DSH2PHONE_TTL_DAYS` | 铸造的 DSH cookie 有效期，默认 30 天 |
 | `DSH_CREDENTIALS_FILE` | 留空 = `~/.dsh/.credentials.yaml`（只读其中的 browser-session secret） |
 | `DSH_APP_DIR` | DSH Desktop 安装目录（插件从这里的 `@deepseek-ai/*` 解析原生类） |
-| `DSH2PHONE_HOME` / `DSH2PHONE_KEY_FILE` | 本机路径；需要换目录时改这里并重跑 `render-plugin-patch` |
+| `DSH2PHONE_HOME` / `DSH2PHONE_KEY_FILE` | 本机路径；`DSH2PHONE_KEY_FILE` 为空时用 `DSH_TUNNEL_KEY` |
 | `RELAY_DATA_PORT` / `RELAY_CONTROL_PORT` / `RELAY_STATE_DIR` / `RELAY_PUBLIC_PREFIX` | relay 运行时（服务器由 compose 提供） |
 | `DSH2PHONE_DOMAIN` / `DSH2PHONE_SERVER_IP` / `DSH2PHONE_SSH_*` | 仅文档与 nginx 模板引用 |
 
 真实环境变量优先于 `.env`，便于临时覆盖：`$env:RELAY_URL='wss://…'; npm run tunnel`。
+例外：插件「设置」保存后会立即写回本进程（否则"保存并应用"要重启才生效）；由启动器导出的变量仍会覆盖，并在界面上提示。
 
 ## 常用命令
 
 ```powershell
 npm run check-env                      # 配置自检
-npm run render-plugin-patch            # 生成插件 cordis.patch.yml
 npm run relay                          # 本地起 relay
 npm run tunnel                         # 隧道主进程
-npm test                               # check-env + plugin-smoke（本地 relay + 假隧道全流程）
+npm test                               # check-env + plugin-config-check + plugin-smoke
 
 node tunnel/src/tunnel.mjs pair        # 配对（终端二维码 + 确认）
 node tunnel/src/tunnel.mjs devices     # 设备列表
@@ -147,6 +161,7 @@ node tunnel/src/tunnel.mjs deny <id>   # 拉黑 / allow / remove / panic
 | 脚本 | 覆盖 | 需要 |
 |---|---|---|
 | `tools/plugin-smoke.mjs` | relay 协议 + 配对 + 设备注册 + deny/remove（本地） | 无 |
+| `tools/plugin-config-check.mjs` | 设置页回归：缺配置→configRequired、占位符识别、写 `.env` 保注释、probe 三段 | 无 |
 | `tools/gate-repro.mjs` | 门禁逻辑离线复现（真密钥 + 假隧道） | `.env` |
 | `tools/relay-dedupe-check.mjs` | 配对去重（本地 relay） | 无 |
 | `tools/relay-pages-theme-check.mjs` | relay 403/503/入口页深色浅色 | 无 |
@@ -207,7 +222,7 @@ secret   = ~/.dsh/.credentials.yaml 中 client-connection/browser-session 的 pa
 ```
 relay/            src/relay.mjs, Dockerfile
 tunnel/           src/tunnel.mjs, src/dsh-cookie.mjs, *.cmd, autostart.vbs.example
-dsh2phone-dsh-plugin/  host.js, client.js, relay-admin.js, dsh-cookie.js, cordis.patch.example.yml
+dsh2phone-dsh-plugin/  host.js, client.js, relay-admin.js, dsh-cookie.js, cordis.patch.yml
 shared/env.mjs    .env 加载器（唯一配置入口）
 deploy/           nginx/*.location, server/docker-compose.yml, tls 自签脚本, prefix-test.mjs
 docs/             HANDOFF.md, ip-emergency-plan.md, ip-feasibility.md, proposal.md, *.png
