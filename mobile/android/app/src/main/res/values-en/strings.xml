@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MobiDSH</string>
+
+    <string name="home_title">Connect your DSH</string>
+    <string name="home_subtitle">Open DSH Desktop on your computer, scan the “Pair phone” QR code, and enter DSH right inside this app without browser restrictions.</string>
+    <string name="home_paired_title">Connected to DSH</string>
+    <string name="home_paired_subtitle">Open DSH below, or scan a new QR code to replace this pairing.</string>
+    <string name="scan_button">Scan QR code to pair</string>
+    <string name="rescan_button">Scan again to replace pairing</string>
+    <string name="manual_button">Paste pairing link</string>
+
+    <string name="steps_title">How to pair</string>
+    <string name="step_1">1. Open DSH Desktop on your computer</string>
+    <string name="step_2">2. Open the bottom-left account menu → “Pair phone”</string>
+    <string name="step_3">3. Scan the QR code with this app</string>
+
+    <string name="security_title">Security</string>
+    <string name="security_body">The pairing code is sent only to the server you scanned, and a new device must be approved on the computer. This app contains no analytics or ads.</string>
+
+    <string name="status_checking">Checking connection…</string>
+    <string name="status_online">Computer online</string>
+    <string name="status_online_direct">Computer online · LAN direct</string>
+    <string name="status_offline">Computer offline</string>
+    <string name="status_unauthorized">Authorization expired</string>
+    <string name="status_unknown">Status unknown</string>
+
+    <string name="paired_host_format">%1$s</string>
+    <string name="paired_device_format">Device: %1$s</string>
+    <string name="paired_at_format">Paired: %1$s</string>
+    <string name="enter_dsh">Open DSH</string>
+    <string name="repair">Pair again</string>
+    <string name="unpair">Unpair this device</string>
+    <string name="settings">Settings</string>
+    <string name="about">About</string>
+    <string name="open_browser">Open in browser</string>
+
+    <string name="pair_title">Pair phone</string>
+    <string name="pair_connecting">Connecting to server…</string>
+    <string name="pair_connecting_hint">Sending the pairing code to %1$s</string>
+    <string name="pair_waiting">Waiting for confirmation</string>
+    <string name="pair_waiting_hint">Tap “Allow” in the DSH dialog on your computer. The code is valid for 5 minutes.</string>
+    <string name="pair_success">Paired successfully</string>
+    <string name="pair_success_message">%1$s has been added to the device allowlist.</string>
+    <string name="pair_success_hint">You can open DSH now, or later from the home screen.</string>
+    <string name="pair_failed">Pairing failed</string>
+    <string name="pair_cancelled">Pairing cancelled</string>
+    <string name="pair_insecure_warning">This is a plain HTTP connection. Use it only for local debugging.</string>
+
+    <string name="action_cancel">Cancel</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_rescan">Scan again</string>
+    <string name="action_done">Done</string>
+    <string name="action_start_pair">Start pairing</string>
+    <string name="action_allow_retry">Allow this certificate and retry</string>
+    <string name="action_close">Close</string>
+
+    <string name="err_invalid_url">The pairing link is malformed.</string>
+    <string name="err_https_required">This link is not HTTPS and was rejected. Ask the computer to generate the correct public address.</string>
+    <string name="err_path">This is not a pairing link (it should end with /dsh-pair).</string>
+    <string name="err_code_missing">The link has no pairing code. Generate a new QR code.</string>
+    <string name="err_bad_host">The server address in the link is invalid.</string>
+    <string name="err_code_expired">The pairing code is invalid or expired. Generate a new QR code on the computer.</string>
+    <string name="err_rejected">The computer rejected this device.</string>
+    <string name="err_tunnel_offline">The computer tunnel is offline. Make sure DSH and the tunnel are running, then retry.</string>
+    <string name="err_no_credential">The server returned an unexpected page without device credentials. Generate a new QR code.</string>
+    <string name="err_http_status">The server returned HTTP %1$d.</string>
+    <string name="err_dns">Cannot resolve the server address. Check your network or domain.</string>
+    <string name="err_connect">Cannot reach the server (port, firewall, or network).</string>
+    <string name="err_timeout">Connection timed out. Make sure the computer tunnel is online, then retry.</string>
+    <string name="err_cert">Certificate verification failed. For an IP address with a domain certificate, you may explicitly allow this host after confirming the risk.</string>
+    <string name="err_network">Network request failed. Check your connection and retry.</string>
+    <string name="err_unexpected">The server returned content this app cannot understand.</string>
+    <string name="err_server_detail">Server says: %1$s</string>
+
+    <string name="manual_title">Paste pairing link</string>
+    <string name="manual_hint">https://…/dsh-pair?code=…</string>
+    <string name="manual_paste">Paste from clipboard</string>
+    <string name="manual_empty">Paste a pairing link first.</string>
+    <string name="manual_invalid">Invalid link: %1$s</string>
+
+    <string name="confirm_title">Pair with %1$s?</string>
+    <string name="confirm_body">The pairing code will be sent only to this address. Make sure it matches the domain shown on your computer.</string>
+    <string name="confirm_http_warning">This address is not HTTPS. Use it only for local debugging.</string>
+    <string name="confirm_replace_title">Replace current pairing?</string>
+    <string name="confirm_replace_body">This device is currently paired with %1$s. Continuing will replace it with the newly scanned host.</string>
+    <string name="confirm_start">Start pairing</string>
+    <string name="deep_link_invalid">The deep link has no valid pairing address.</string>
+
+    <string name="camera_permission_title">Camera permission needed</string>
+    <string name="camera_permission_body">Scanning a QR code needs camera access. Allow camera permission for this app in system settings.</string>
+    <string name="camera_permission_settings">Open settings</string>
+    <string name="scan_prompt">Place the pairing QR code inside the frame</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_pairing_section">Current pairing</string>
+    <string name="settings_security_section">Security</string>
+    <string name="settings_about_section">About</string>
+    <string name="settings_no_pairing">Not paired yet. Go back and scan a QR code.</string>
+    <string name="settings_allow_bad_cert">Allow certificate mismatch for this host</string>
+    <string name="settings_allow_bad_cert_desc">Only for the emergency case where the host is an IP address but its certificate is issued to a domain. Enabling this skips certificate verification for that host and exposes you to man-in-the-middle attacks.</string>
+    <string name="settings_allow_bad_cert_warning_title">Allow certificate mismatch?</string>
+    <string name="settings_allow_bad_cert_warning_body">This device will not be able to verify %1$s. An attacker could steal your DSH credentials. Continue only if this is your own server and a valid certificate is not available.</string>
+    <string name="settings_allow_bad_cert_confirm">Allow</string>
+    <string name="settings_unpair_title">Unpair this device?</string>
+    <string name="settings_unpair_body">This clears the device credentials and WebView data stored on this phone. It does not remove the record from the computer; remove it later in DSH device management.</string>
+    <string name="settings_unpair_confirm">Unpair</string>
+    <string name="settings_copy">Copy diagnostics</string>
+    <string name="settings_copied">Copied to clipboard</string>
+    <string name="settings_ua_label">Device identifier</string>
+    <string name="settings_origin_label">Paired origin</string>
+    <string name="settings_version_label">Version</string>
+    <string name="settings_build_label">Build</string>
+    <string name="settings_build_debug">debug</string>
+    <string name="settings_build_release">release</string>
+    <string name="settings_privacy_title">Privacy</string>
+    <string name="settings_privacy_body">This app collects no analytics and uploads no device data. Pairing credentials stay on this phone and are encrypted with Android Keystore.</string>
+
+    <string name="web_menu_refresh">Refresh</string>
+    <string name="web_menu_open_browser">Open in browser</string>
+    <string name="web_menu_settings">Settings</string>
+    <string name="web_ssl_title">Certificate mismatch</string>
+    <string name="web_ssl_message">The certificate for %1$s cannot be verified. Continuing skips certificate checks and may expose you to man-in-the-middle attacks. Continue?</string>
+    <string name="web_ssl_continue">Continue</string>
+    <string name="web_ssl_cancel">Cancel</string>
+    <string name="web_external_title">Open external link</string>
+    <string name="web_external_message">This link is outside the paired host:\n%1$s</string>
+    <string name="web_external_open">Open in browser</string>
+    <string name="web_auth_lost">This device is no longer authorized. Generate a new QR code and pair again.</string>
+    <string name="web_offline">The computer tunnel is offline. Try again later.</string>
+    <string name="web_lan_fallback">LAN direct is unavailable, switched to the relay server.</string>
+    <string name="web_repair">Pair again</string>
+    <string name="web_retry">Retry</string>
+    <string name="web_download_started">Download started</string>
+    <string name="web_download_unsupported">This download type is not supported yet. Open it in a browser.</string>
+    <string name="web_loading">Entering DSH…</string>
+
+    <string name="update_title">New version %1$s available</string>
+    <string name="update_message">%1$s\n\nDownload and install now?</string>
+    <string name="update_notes_default">UI and stability improvements.</string>
+    <string name="update_download">Download and install</string>
+    <string name="update_later">Later</string>
+    <string name="update_downloading">Downloading update…</string>
+    <string name="update_progress">%1$d%%</string>
+    <string name="update_failed">Update failed: %1$s</string>
+    <string name="update_latest">You are up to date</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_no_pairing">Pair a device before checking for updates</string>
+    <string name="update_install_permission_title">Install permission needed</string>
+    <string name="update_install_permission_body">Allow MobiDSH to install unknown apps, then return and try again.</string>
+    <string name="update_install_permission_action">Open settings</string>
+    <string name="update_install_opening">Opening installer…</string>
+    <string name="settings_check_update">Check for updates</string>
+
+    <string name="about_title">About MobiDSH</string>
+    <string name="about_body">MobiDSH (移鲸) is the Android client for dsh2phone. It scans the QR code in-app, pairs natively, then opens DSH in a controlled WebView. It reuses the pairing QR code and relay device allowlist, and does not change the server-side security model.\n\nIt is not a replacement for DSH Desktop and does not keep a background connection.\n\nIcon: chibi \"Dafeiyu / Whale Girl\" by YunYueSama, source https://github.com/YunYueSama/codex-deepseek-pet , used under the Dafeiyu Attribution License 1.0; cropped and scaled for this app.</string>
+    <string name="about_ok">Got it</string>
+    <string name="generic_error">Something went wrong. Try again.</string>
+</resources>

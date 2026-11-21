@@ -4,6 +4,7 @@
 //   pairStart / pairInspect / pairRespond / pairCancel   — the pairing flow
 //   devicesList / devicesSet / devicesRemove / devicesPanic — whitelist management
 //   configGet / configSave / probe / newTunnelKey       — the settings tab
+//   healthCheck                                          — startup self-check
 //
 // The pairing flow opens its own admin connection to the dsh-relay control plane
 // (protocol identical to tunnel/pair.cmd), mints the DSH browser cookie locally
@@ -12,6 +13,7 @@
 import { createRequire } from "node:module";
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
+import { connect } from "node:net";
 import { dirname, join } from "node:path";
 // Loads <repo>/.env — every endpoint/secret below comes from there, never from
 // this file (see .env.example).
@@ -23,40 +25,79 @@ import { openControl, sendExpect } from "./relay-admin.js";
 // `import '@deepseek-ai/dsh-typert-protocol'` would load a second copy of the
 // Service/Typert classes. The Host Gateway validates receivers against its own
 // class identities, so resolve the Host's exact copies first.
-function hostRequire() {
+//
+// Two Host layouts exist: DSH Desktop 1.x ships an `app` directory, DSH 2.x
+// ships `app.asar`. The running app comes first — .env may still point at an
+// older install, and its protocol copy would not match the running Gateway.
+function hostRequireRoots() {
   const candidates = [
-    process.env.DSH_APP_DIR,
+    join(dirname(process.execPath), "resources", "app.asar"),
     join(dirname(process.execPath), "resources", "app"),
+    process.env.DSH_APP_DIR,
   ].filter((value) => typeof value === "string" && value.length > 0);
+  /** @type {Array<(name: string) => any>} */
+  const roots = [];
   for (const dir of candidates) {
     const pkg = join(dir, "package.json");
     if (!existsSync(pkg)) continue;
     try {
-      return createRequire(pkg);
+      roots.push(createRequire(pkg));
     } catch { /* try the next candidate */ }
   }
-  return undefined;
+  return roots;
 }
 
-const hostReq = hostRequire();
+const hostRoots = hostRequireRoots();
+const pluginRequire = createRequire(import.meta.url);
 let Remote;
 let TypertRemoteService;
 let QRCode;
 let WebSocketImpl;
+
+/** 从 Host 的包树里找；`qrcode` 这类插件自带依赖最后回落到仓库自己的 node_modules。 */
+function requireAnywhere(name) {
+  for (const req of hostRoots) {
+    try {
+      return req(name);
+    } catch { /* not in this root */ }
+  }
+  return pluginRequire(name);
+}
+
 try {
-  if (!hostReq) throw new Error("host package tree not found");
-  ({ Remote, TypertRemoteService } = hostReq("@deepseek-ai/dsh-typert-protocol"));
-  QRCode = hostReq("qrcode");
+  if (hostRoots.length === 0) throw new Error("host package tree not found");
+  ({ Remote, TypertRemoteService } = requireAnywhere("@deepseek-ai/dsh-typert-protocol"));
+  QRCode = requireAnywhere("qrcode");
   // `ws` supports TLS options (needed when the relay is addressed by IP);
   // Node's global WebSocket has no such options.
-  WebSocketImpl = hostReq("ws").WebSocket;
+  WebSocketImpl = requireAnywhere("ws").WebSocket;
 } catch {
   ({ Remote, TypertRemoteService } = await import("@deepseek-ai/dsh-typert-protocol"));
-  QRCode = createRequire(import.meta.url)("qrcode");
+  QRCode = pluginRequire("qrcode");
   WebSocketImpl = globalThis.WebSocket;
 }
 
 const NS = "dsh2phone";
+
+// Host-API 探测：缺 typert 类时模块仍要能加载完（驼峰：class extends undefined
+// 会在 import 阶段就炸掉，连一条日志都留不下）。真正决定“能不能干活”的地方是
+// apply()，不在模块顶层。
+const HOST_API_READY = typeof Remote === "function" && typeof TypertRemoteService === "function";
+const ServiceBase = HOST_API_READY ? TypertRemoteService : class {};
+
+// 这些依赖只影响配对（二维码 / 中继连接），缺了也照样能进设置页，算“软问题”。
+function softDependencyProblems() {
+  const problems = [];
+  if (typeof QRCode?.toDataURL !== "function") problems.push("qrcode 不可用（配对二维码生成不了）");
+  if (typeof WebSocketImpl !== "function") problems.push("WebSocket 不可用（连不上中继）");
+  return problems;
+}
+
+// Startup self-check (healthCheck()): the report is reused for a minute, and
+// every TCP leg is short enough that the dialog never waits on it visibly.
+const HEALTH_TTL_MS = 60_000;
+const HEALTH_PROBE_TIMEOUT_MS = 1200;
+const HEALTH_RELAY_TIMEOUT_MS = 5000;
 
 // The version shown in the settings tab; bumped by tools/version.mjs on every
 // push (enforced by tools/version-check.mjs).
@@ -184,6 +225,39 @@ async function withTimeout(promise, ms, message) {
   }
 }
 
+/**
+ * TCP 探活：只回答“这个端口有没有受理连接”。隧道上游和局域网边缘都是纯
+ * TCP 转发，所以这里不需要完整的 HTTP 请求（还能顺带发现半开连接）。
+ * @returns {Promise<{ok: true} | {ok: false, error: string}>}
+ */
+function tcpProbe(host, port, timeoutMs = HEALTH_PROBE_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    /** @type {import("node:net").Socket | undefined} */
+    let socket;
+    let settled = false;
+    const finish = (ok, error) => {
+      if (settled) return;
+      settled = true;
+      socket?.destroy();
+      resolve(ok ? { ok: true } : { ok: false, error: error ?? "连接失败" });
+    };
+    socket = connect({ host, port });
+    socket.setTimeout(timeoutMs, () => finish(false, `${timeoutMs}ms 超时`));
+    socket.once("connect", () => finish(true));
+    socket.once("error", (err) => finish(false, err.code ?? err.message));
+  });
+}
+
+/** 把一次健康检查写进 Host 日志；桌面端的日志里能直接看到。 */
+function logHealth(report) {
+  const attention = report.checks.filter((check) => check.status === "fail" || check.status === "warn");
+  if (attention.length === 0) {
+    console.log(`[dsh2phone] health ok（${report.checks.length} 项）`);
+    return;
+  }
+  console.warn(`[dsh2phone] health ${report.level}：${attention.map((check) => `${check.title} ${check.detail}`).join("；")}`);
+}
+
 /** dsh-relay admin session behind one pairing flow. */
 class PairSession {
   constructor(ws, { code, expiresAt, qrImage }) {
@@ -210,12 +284,19 @@ class PairSession {
   }
 }
 
-class Dsh2PhoneService extends TypertRemoteService {
+/** The live service instance, so apply() can kick off the startup health pass. */
+let runningService = null;
+
+class Dsh2PhoneService extends ServiceBase {
   // NOTE: cordis invokes service methods with a traced Proxy as `this`, so
   // ECMAScript private methods/fields (#x) fail V8's brand check there
   // ("Receiver must be an instance of class …"). Keep helpers public.
   constructor(ctx, config) {
     super(ctx, NS);
+    // Kept for webPort(): the Host's own listener port is not part of `config`,
+    // and the webServer service is only reachable through the context.
+    this.hostContext = ctx;
+    runningService = this;
     // cordis may hand over `undefined` (omitted YAML option) or an empty string;
     // neither may clobber a real value.
     this.configOverrides = Object.fromEntries(
@@ -223,6 +304,8 @@ class Dsh2PhoneService extends TypertRemoteService {
     );
     this.reloadConfig();
     this.pair = null;
+    this.health = null;
+    this.healthRun = null;
     ctx.effect(() => () => this.closePair(), "dsh2phone.pairDispose");
   }
 
@@ -408,6 +491,135 @@ class Dsh2PhoneService extends TypertRemoteService {
     return { at, local, control, public: publicPage };
   }
 
+  // --------------------------------------------------------------- health check
+  //
+  // The failure this exists for: a DSH build that picks a random web port (DSH
+  // NEXT ships `port: 0`) while the tunnel keeps forwarding to a fixed
+  // UPSTREAM_PORT. The phone then reports "电脑端暂时不可达" and nothing on the
+  // desktop says why. One startup pass over the local legs points at the exact
+  // mismatch; the relay leg is best-effort.
+
+  /** DSH 自己的监听端口：优先用 Host 注入的 DSH_WEB_URL，其次问 webServer 服务。 */
+  webPort() {
+    const advertised = process.env.DSH_WEB_URL;
+    if (advertised) {
+      try {
+        const url = new URL(advertised);
+        if (url.port !== "") return Number(url.port);
+        if (url.protocol === "https:") return 443;
+        if (url.protocol === "http:") return 80;
+      } catch { /* fall through to the service */ }
+    }
+    try {
+      const server = typeof this.hostContext?.get === "function" ? this.hostContext.get("webServer") : undefined;
+      const port = Number(server?.port);
+      if (Number.isInteger(port) && port > 0) return port;
+    } catch { /* service not mounted in this Host */ }
+    return undefined;
+  }
+
+  /** 隧道把请求转发到哪里（默认值与 tunnel/src/tunnel.mjs 一致）。 */
+  upstreamTarget() {
+    const host = env("UPSTREAM_HOST", "127.0.0.1");
+    const port = Number(env("UPSTREAM_PORT", "43120"));
+    return { host, port: Number.isInteger(port) && port > 0 ? port : 43120 };
+  }
+
+  /** 局域网直连边缘（与 tunnel 对 DSH2PHONE_LAN_* 的解析保持一致）。 */
+  lanEdgeTarget() {
+    const enabled = !/^(0|false|no|off)$/iu.test(String(env("DSH2PHONE_LAN_EDGE", "1")).trim());
+    const port = Number(env("DSH2PHONE_LAN_PORT", "43220"));
+    return { enabled, port: Number.isInteger(port) && port > 0 ? port : 43220 };
+  }
+
+  /** 一次完整的健康检查；不缓存、不抛错（每一项独立成行）。 */
+  async collectHealth() {
+    /** @type {Array<{id: string, title: string, status: "ok"|"warn"|"fail"|"skip", detail: string, hint?: string}>} */
+    const checks = [];
+    const add = (id, title, status, detail, hint) => checks.push({ id, title, status, detail, ...(hint === undefined ? {} : { hint }) });
+    const upstream = this.upstreamTarget();
+    const actual = this.webPort();
+
+    // 1) 隧道上游端口 == DSH 实际监听端口？今天这类故障的唯一现场证据。
+    const dsh = await tcpProbe(upstream.host, upstream.port);
+    if (actual !== undefined && actual !== upstream.port) {
+      add("dsh", "电脑端 DSH 端口", "fail",
+        `DSH 正在 ${actual} 上监听，隧道却转发到 ${upstream.host}:${upstream.port}`,
+        `把 DSH 的网页端口固定为 ${upstream.port}（DSH NEXT 改 ~/.dsh/desktop-preferences.json 里的 "port"），或把 .env 的 UPSTREAM_PORT 改成 ${actual} 后重启隧道`);
+    } else if (!dsh.ok) {
+      add("dsh", "电脑端 DSH 端口", "fail",
+        `${upstream.host}:${upstream.port} 没有应答（${dsh.error}）`,
+        `手机只会看到“电脑端暂时不可达”。把 DSH 的端口固定为 ${upstream.port}，或把 UPSTREAM_PORT 改成实际端口并重启隧道`);
+    } else {
+      add("dsh", "电脑端 DSH 端口", "ok", `${upstream.host}:${upstream.port} 已监听`);
+    }
+
+    // 2) 隧道进程：局域网直连边缘由它提供，端口不监听说明它没跑。
+    const edge = this.lanEdgeTarget();
+    if (!edge.enabled) {
+      add("lan", "局域网直连通道", "skip", "已在 .env 关闭（DSH2PHONE_LAN_EDGE=0）");
+    } else {
+      const probe = await tcpProbe("127.0.0.1", edge.port);
+      add("lan", "局域网直连通道", probe.ok ? "ok" : "fail",
+        probe.ok ? `127.0.0.1:${edge.port} 已监听` : `127.0.0.1:${edge.port} 没在监听（${probe.error}）`,
+        probe.ok ? undefined : "隧道进程没在运行：启动 tunnel（tunnel\\start.cmd），或检查开机自启的 dsh2phone-tunnel.vbs");
+    }
+
+    // 3) 配对所需的配置（缺项只影响配对，不影响已配对设备）。
+    const issues = configIssues(this.cfg);
+    add("config", "连接配置", issues.length === 0 ? "ok" : "warn",
+      issues.length === 0 ? "中继地址、配对地址、隧道密钥都已就绪" : issues.map((item) => item.message).join("；"),
+      issues.length === 0 ? undefined : "打开“设置”补齐后保存");
+
+    // 4) 铸造 DSH cookie 用的浏览器会话密钥。
+    try {
+      readBrowserSessionSecret(this.cfg.credentialsFile);
+      add("credentials", "浏览器会话密钥", "ok", "已读到，配对时能铸造 DSH cookie");
+    } catch (err) {
+      add("credentials", "浏览器会话密钥", "warn", `读不到：${err?.message ?? String(err)}`,
+        "检查 DSH_CREDENTIALS_FILE，或在 DSH 里重新登录一次");
+    }
+
+    // 5) 中继控制面：配置不完整时没有意义，直接跳过。
+    if (issues.length > 0) {
+      add("relay", "中继控制面", "skip", "配置不完整，未测试");
+    } else {
+      try {
+        const reply = await this.adminCall({ t: "devices.list" }, "devices", { timeoutMs: HEALTH_RELAY_TIMEOUT_MS });
+        add("relay", "中继控制面", "ok", `已配对 ${(reply.devices ?? []).length} 台设备`);
+      } catch (err) {
+        add("relay", "中继控制面", "warn", `连不上：${err?.message ?? String(err)}`,
+          "公网链路会不可用；手机在同网时仍可走局域网直连");
+      }
+    }
+
+    // 6) 插件自带依赖（qrcode / ws）：缺了只影响配对，设置页照常。
+    const soft = softDependencyProblems();
+    if (soft.length > 0) {
+      add("deps", "插件依赖", "warn", soft.join("；"), "配对会失败；设置页与设备管理不受影响");
+    }
+
+    const level = checks.some((check) => check.status === "fail")
+      ? "fail"
+      : checks.some((check) => check.status === "warn") ? "warn" : "ok";
+    return { at: Date.now(), level, ok: level === "ok", checks };
+  }
+
+  /** 缓存的健康报告；refresh 时重跑。并发调用共用一次检查。 */
+  async healthCheck(refresh = false) {
+    const cached = this.health;
+    if (refresh !== true && cached !== null && Date.now() - cached.at < HEALTH_TTL_MS) return cached;
+    if (this.healthRun !== null) return this.healthRun;
+    this.healthRun = this.collectHealth()
+      .then((report) => {
+        this.health = report;
+        logHealth(report);
+        return report;
+      })
+      .finally(() => { this.healthRun = null; });
+    return this.healthRun;
+  }
+
   closePair() {
     const session = this.pair;
     this.pair = null;
@@ -561,25 +773,75 @@ function markRemote(Ctor, method) {
   initializer.call(Object.create(Ctor.prototype));
 }
 
-for (const method of [
-  "pairStart",
-  "pairInspect",
-  "pairRespond",
-  "pairCancel",
-  "devicesList",
-  "devicesSet",
-  "devicesRemove",
-  "devicesPanic",
-  "configGet",
-  "configSave",
-  "newTunnelKey",
-  "probe",
-]) {
-  markRemote(Dsh2PhoneService, method);
+/**
+ * 降级壳：正常服务注册失败时只保留 healthCheck，让界面能显示原因，而不是让
+ * 整个入口消失。它自身不再引用任何业务代码，所以不会把故障带进后续流程。
+ */
+class Dsh2PhoneDiagnostics extends ServiceBase {
+  constructor(ctx, options = {}) {
+    super(ctx, NS);
+    this.error = String(options?.error ?? "插件激活失败");
+  }
+
+  async healthCheck() {
+    return {
+      at: Date.now(),
+      level: "fail",
+      ok: false,
+      checks: [{
+        id: "plugin",
+        title: "插件自检",
+        status: "fail",
+        detail: `插件激活失败，已降级为诊断壳：${this.error}`,
+        hint: "多半是当前 DSH 版本与插件不兼容。查看 Desktop 日志里的 [dsh2phone]，或升级/回退插件版本。",
+      }],
+    };
+  }
+}
+
+if (HOST_API_READY) {
+  for (const method of [
+    "pairStart",
+    "pairInspect",
+    "pairRespond",
+    "pairCancel",
+    "devicesList",
+    "devicesSet",
+    "devicesRemove",
+    "devicesPanic",
+    "configGet",
+    "configSave",
+    "newTunnelKey",
+    "probe",
+    "healthCheck",
+  ]) {
+    markRemote(Dsh2PhoneService, method);
+  }
+  markRemote(Dsh2PhoneDiagnostics, "healthCheck");
 }
 
 export function apply(ctx, config) {
-  ctx.plugin(Dsh2PhoneService, config);
+  // 结构性不可用：没有任何 typert 类，连诊断壳都注册不了——只能留日志。
+  if (!HOST_API_READY) {
+    console.error("[dsh2phone] Host API 不可用（@deepseek-ai/dsh-typert-protocol 缺失或形状不符）：插件不注册任何功能。");
+    return;
+  }
+  try {
+    ctx.plugin(Dsh2PhoneService, config);
+  } catch (err) {
+    // 只加载空壳：不再触发任何配对/设置逻辑，界面仍能看到健康检查的失败原因。
+    console.error(`[dsh2phone] 激活失败，降级为诊断壳：${err?.stack ?? err}`);
+    try {
+      ctx.plugin(Dsh2PhoneDiagnostics, { error: err?.message ?? String(err) });
+    } catch (fallbackError) {
+      console.error(`[dsh2phone] 诊断壳注册失败：${fallbackError?.message ?? fallbackError}`);
+    }
+    return;
+  }
+  // 启动自检：每次 Host 起来跑一次，结果进日志；客户端打开时直接读缓存。
+  // 5s 足够让 webServer 完成监听，太早会把自己的端口误判成“没有应答”。
+  const timer = setTimeout(() => { void runningService?.healthCheck(true).catch(() => {}); }, 5000);
+  timer.unref?.();
 }
 
 // Exported for tests/smoke checks only.

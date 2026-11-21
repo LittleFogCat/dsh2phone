@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 使用 AndroidX EdgeToEdge，不 opt-out；系统栏透明，WebAppActivity 负责画背景。 -->
+    <style name="Theme.Dsh2Phone.Web" parent="Theme.Dsh2Phone">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+</resources>

@@ -12,8 +12,13 @@
 //
 // Control plane (:3201, /tunnel for the PC tunnel, /tunnel?mode=admin style
 // hello for management connections, /healthz):
-//   text frames   JSON: hello/hello.ok/open/close/pair.*/devices.*
+//   text frames   JSON: hello/hello.ok/open/close/pair.*/devices.*/lan.announce
 //   binary frames [4B stream id BE][payload bytes]
+//
+// LAN direct: the tunnel announces a local HTTPS edge ({t:"lan.announce",
+// lan:{port, fp, ips}} or lan:null); paired devices read it back from the data
+// plane at GET /dsh-lan (public URL /dsh/dsh-lan, behind the device gate) so
+// the phone App can reach the PC directly when it is on the same LAN.
 import http from "node:http";
 import net from "node:net";
 import { randomBytes, createHmac } from "node:crypto";
@@ -110,12 +115,38 @@ let nextStreamId = 1;
 /** @type {Map<number, net.Socket>} */
 const streams = new Map();
 let pendingPair = null; // { code, expiresAt, ws, timer }
+// LAN direct announcement from the tunnel (null = no edge / cleared).
+let tunnelLan = null;
+
+// LAN 直连通告只接受一个很小的固定结构；多余或畸形字段一律丢弃，
+// 避免把未经校验的内容塞进 /dsh-lan 响应。
+function sanitizeLan(lan) {
+  if (lan === null || lan === undefined) return null;
+  if (typeof lan !== "object") return null;
+  const port = Number(lan.port);
+  const fp = typeof lan.fp === "string" ? lan.fp.toLowerCase() : "";
+  const rawIps = Array.isArray(lan.ips) ? lan.ips : [];
+  const ips = [];
+  for (const ip of rawIps) {
+    if (typeof ip !== "string") continue;
+    const trimmed = ip.trim().toLowerCase();
+    // IPv4 / IPv6（含方括号形式）的最小合法性检查；主机名不允许（tunnel 只通告地址）。
+    if (!/^[0-9a-f.:[\]]{3,45}$/u.test(trimmed)) continue;
+    if (ips.length >= 8) break;
+    if (!ips.includes(trimmed)) ips.push(trimmed);
+  }
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
+  if (!/^[0-9a-f]{64}$/u.test(fp)) return null;
+  if (ips.length === 0) return null;
+  return { port, fp, ips };
+}
 
 function killTunnel(reason) {
   if (tunnelPing) { clearInterval(tunnelPing); tunnelPing = null; }
   if (!tunnel) return;
   const dead = tunnel;
   tunnel = null;
+  tunnelLan = null;
   for (const [id, sock] of streams) {
     sock.destroy();
     streams.delete(id);
@@ -184,6 +215,20 @@ function pageRespond(socket, status, html, extraHeaders = []) {
     "",
   ].join("\r\n");
   socket.end(head + html);
+}
+
+/** JSON answer for the LAN-direct info endpoint. */
+function jsonRespond(socket, body) {
+  const head = [
+    "HTTP/1.1 200",
+    "content-type: application/json; charset=utf-8",
+    "cache-control: no-store",
+    "connection: close",
+    `content-length: ${Buffer.byteLength(body)}`,
+    "",
+    "",
+  ].join("\r\n");
+  socket.end(head + body);
 }
 
 // ---------- phone entry pages (landing / waiting) ----------
@@ -302,18 +347,17 @@ async function handlePair(socket, target, ip, ua, cookieHeader) {
     known.lastSeen = Date.now();
     known.lastIp = ip;
     saveRegistry();
+    // 不要在这之后 socket.destroy()：pageRespond 里的 end() 还没把
+    // Content-Length 指定的字节刷完就 destroy 会触发 net::ERR_CONTENT_LENGTH_MISMATCH。
     pageRespond(socket, 200, landingPage(known.name ?? "此设备"));
-    socket.destroy();
     return;
   }
   if (!code) {
     pageRespond(socket, 200, waitingPage());
-    socket.destroy();
     return;
   }
   if (!pendingPair || pendingPair.code !== code || Date.now() > pendingPair.expiresAt || pendingPair.ws.readyState !== 1) {
     httpRespond(socket, 403, "配对失败", denyPage("配对码无效或已过期。", "请在这台电脑上打开 DSH → 左下角“配对手机”，重新生成二维码后扫码。"));
-    socket.destroy();
     return;
   }
   const answer = await pairRequest(pendingPair.ws, code, {
@@ -323,7 +367,6 @@ async function handlePair(socket, target, ip, ua, cookieHeader) {
   });
   if (!answer.approved) {
     httpRespond(socket, 403, "配对被拒绝", denyPage(answer.expired ? "确认超时或会话中断。" : "电脑端拒绝了这个设备。"));
-    socket.destroy();
     return;
   }
   // Deduplicate: one registry row per device. The device cookie is the exact
@@ -359,11 +402,14 @@ async function handlePair(socket, target, ip, ua, cookieHeader) {
   // Land on the entry page instead of redirecting: the user explicitly taps
   // "进入 DSH", and the page doubles as a bookmarkable entry point.
   pageRespond(socket, 200, landingPage(name), cookies.map((c) => "set-cookie: " + c));
-  socket.destroy();
 }
 
 // ---------- data plane: peek, decide, then pipe ----------
-const dataServer = net.createServer((conn) => {
+// allowHalfOpen: 配对成功页要等 PC 确认（最长 120s）才写响应；部分客户端
+// （Android HttpURLConnection / 某些 HTTP 栈）发完请求就 shutdown 写端。
+// 若允许自动半关闭，Node 会在收到 FIN 时关掉写端，确认后的响应就写不出去，
+// 客户端表现为 “unexpected end of stream / ERR_CONTENT_LENGTH_MISMATCH”。
+const dataServer = net.createServer({ allowHalfOpen: true }, (conn) => {
   const ip = conn.remoteAddress?.replace(/^::ffff:/u, "") ?? "";
   if (!tunnel || tunnel.readyState !== 1) {
     // A bare destroy surfaces as ERR_EMPTY_RESPONSE ("无法显示此网页") in the
@@ -402,7 +448,6 @@ const dataServer = net.createServer((conn) => {
     if (target?.includes("token=")) {
       console.log(`[relay] rejected public token use from ${ip}`);
       httpRespond(conn, 403, "无效的访问方式", denyPage("此入口不接受 token 登录。", "请使用电脑端生成的配对二维码完成设备授权。"));
-      conn.destroy();
       return;
     }
     const deviceId = parseDeviceCookie(cookieHeader);
@@ -413,12 +458,19 @@ const dataServer = net.createServer((conn) => {
         denied ? "该设备已被禁止访问。" : "此设备尚未配对。",
         "请在电脑端运行 pair 生成配对二维码，扫码完成授权。",
       ));
-      conn.destroy();
       return;
     }
     device.lastSeen = Date.now();
     device.lastIp = ip;
     saveRegistry();
+
+    // 局域网直连转介：手机 App 在进入 WebView 前查询（公网 URL /dsh/dsh-lan，
+    // nginx 剥离 /dsh/ 前缀后到达这里；也兼容直连 relay 数据面的裸路径）。
+    // 必须在设备门禁之后：只有白名单设备才允许知道 PC 的局域网地址。
+    if (method === "GET" && (target === "/dsh-lan" || target === "/dsh/dsh-lan")) {
+      jsonRespond(conn, JSON.stringify({ lan: tunnelLan }));
+      return;
+    }
 
     // approved — become a transparent byte pipe
     const id = nextStreamId++;
@@ -427,6 +479,9 @@ const dataServer = net.createServer((conn) => {
     // forward the ENTIRE peeked buffer (headers + any early body), not just the rest
     if (buffered.length > 0) sendData(id, buffered);
     conn.on("data", (c) => sendData(id, c));
+    // allowHalfOpen 下客户端 FIN 只会触发 end，不会触发 close；对已经进入代理
+    // 阶段的连接，end 即视为客户端结束，通知远端关闭上游，避免泄漏半开连接。
+    conn.on("end", () => { if (streams.delete(id)) sendText({ t: "close", id }); });
     conn.on("close", () => { if (streams.delete(id)) sendText({ t: "close", id }); });
     conn.on("error", () => { if (streams.delete(id)) sendText({ t: "close", id }); });
   });
@@ -535,6 +590,17 @@ controlServer.on("upgrade", (req, socket, head) => {
           ws.send(JSON.stringify({ t: "ok", op: msg.t }));
           notifyDeviceChange();
           console.log("[relay] PANIC: all devices revoked");
+          break;
+        }
+        case "lan.announce": {
+          // 局域网直连通告只接受当前 tunnel 连接；重连后由新通告覆盖，断开即清空。
+          if (ws !== tunnel) break;
+          tunnelLan = sanitizeLan(msg.lan);
+          if (tunnelLan) {
+            console.log(`[relay] lan edge: ${tunnelLan.ips.join(", ")}:${tunnelLan.port}`);
+          } else {
+            console.log("[relay] lan edge cleared");
+          }
           break;
         }
         default:

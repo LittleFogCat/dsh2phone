@@ -59,7 +59,7 @@ const markers = remoteMethods(Object.create(index.Dsh2PhoneService.prototype));
 const expected = [
   "pairStart", "pairInspect", "pairRespond", "pairCancel",
   "devicesList", "devicesSet", "devicesRemove", "devicesPanic",
-  "configGet", "configSave", "newTunnelKey", "probe",
+  "configGet", "configSave", "newTunnelKey", "probe", "healthCheck",
 ];
 const got = markers.map((m) => m.exportName ?? m.method).sort();
 if (JSON.stringify(got) !== JSON.stringify([...expected].sort())) fail("remoteMethods", new Error(`got ${JSON.stringify(got)}`));

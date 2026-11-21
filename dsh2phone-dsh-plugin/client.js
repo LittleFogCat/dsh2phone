@@ -76,6 +76,14 @@ window.__ModuleLoader__.load({
       '已写入 {file}': 'Written to {file}',
       '被真实环境变量覆盖，需重启 Desktop：{names}': 'overridden by real environment variables; restart Desktop: {names}',
       '测试连通性': 'Test connectivity',
+      '健康检查': 'Health check',
+      '重新检查': 'Check again',
+      '检查中…': 'Checking…',
+      '正在检查…': 'Checking…',
+      '注意': 'warning',
+      '跳过': 'skipped',
+      '健康检查发现 {n} 项问题': 'Health check found {n} issue(s)',
+      '查看': 'View',
       '本机 DSH': 'Local DSH',
       '控制面（relay）': 'Control plane (relay)',
       '公网配对页': 'Public pairing page',
@@ -120,6 +128,31 @@ window.__ModuleLoader__.load({
       },
     };
 
+    // ------------------------------------------------------- host health report
+    // One startup pass over the host's local legs (DSH port, tunnel edge, config,
+    // cookie secret) plus a best-effort relay leg. The result drives the menu row
+    // marker, the dialog banner and the settings list; failures are logged by the
+    // host as well, so the desktop log explains a dead phone without the UI.
+    const health = {
+      report: null,
+      listeners: new Set(),
+      set(report) {
+        if (report === null || report === undefined) return;
+        health.report = report;
+        for (const listener of [...health.listeners]) listener();
+      },
+      subscribe(listener) {
+        health.listeners.add(listener);
+        return () => health.listeners.delete(listener);
+      },
+      getSnapshot() {
+        return health.report;
+      },
+      attention() {
+        return (health.report?.checks ?? []).filter((check) => check.status === 'fail' || check.status === 'warn');
+      },
+    };
+
     // ------------------------------------------------------------------- host API
     function createApi(rpc) {
       const call = async (method, args = {}) => {
@@ -140,6 +173,7 @@ window.__ModuleLoader__.load({
         configSave: (patch) => call('configSave', { patch }),
         newTunnelKey: () => call('newTunnelKey'),
         probe: () => call('probe'),
+        healthCheck: (refresh) => call('healthCheck', { refresh: refresh === true }),
       };
     }
 
@@ -222,6 +256,7 @@ window.__ModuleLoader__.load({
 .d2p-testWhere{color:var(--dsw-alias-label-secondary);font-size:11.5px;overflow-wrap:anywhere}
 .d2p-ok{color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 55%,var(--dsw-alias-label-primary))}
 .d2p-bad{color:var(--dsw-alias-state-error-primary)}
+.d2p-warn{color:var(--dsw-alias-state-warning-primary,var(--dsw-alias-label-secondary))}
 .d2p-details{margin-top:14px;font-size:12.5px}
 .d2p-details summary{cursor:pointer;color:var(--dsw-alias-label-secondary);font-size:12.5px}
 .d2p-details summary:hover{color:var(--dsw-alias-label-primary)}
@@ -300,7 +335,9 @@ window.__ModuleLoader__.load({
 
       const paint = () => {
         if (row === null) return;
-        const label = t('配对手机');
+        // "⚠" is the only always-visible signal that the desktop side is broken,
+        // because the phone's own message ("电脑端暂时不可达") never reaches this UI.
+        const label = health.attention().length > 0 ? `${t('配对手机')} ⚠` : t('配对手机');
         row.setAttribute('aria-label', label);
         if (rowLabel !== null) rowLabel.textContent = label;
       };
@@ -496,6 +533,8 @@ window.__ModuleLoader__.load({
       const [note, setNote] = React.useState(null);
       const [test, setTest] = React.useState(null);
       const [copied, setCopied] = React.useState(false);
+      const healthReport = React.useSyncExternalStore(health.subscribe, health.getSnapshot);
+      const [checking, setChecking] = React.useState(false);
 
       const applySnapshot = React.useCallback((value) => {
         setSnap(value);
@@ -575,6 +614,19 @@ window.__ModuleLoader__.load({
         }
       };
 
+      // Full pass including the relay leg; the startup pass may have been cached.
+      const recheck = async () => {
+        setChecking(true);
+        setNote(null);
+        try {
+          health.set(await api.healthCheck(true));
+        } catch (err) {
+          setNote({ kind: 'error', text: messageOf(err) });
+        } finally {
+          setChecking(false);
+        }
+      };
+
       const copy = async () => {
         try {
           await navigator.clipboard.writeText(DEPLOY_COMMANDS);
@@ -618,6 +670,33 @@ window.__ModuleLoader__.load({
           ? h('p', { className: 'd2p-banner d2p-bannerBad', role: 'status' },
               h('b', null, t('还缺配置')), ' · ', t('填好下面的连接信息后会自动回到配对。'))
           : null,
+        h('div', { className: 'd2p-health' },
+          h('div', { className: 'd2p-row', style: { marginTop: 12, justifyContent: 'space-between' } },
+            h('span', { className: 'd2p-label', style: { fontSize: 12.5 } }, t('健康检查')),
+            h('button', {
+              type: 'button',
+              className: 'd2p-btn d2p-mini',
+              disabled: checking,
+              onClick: () => void recheck(),
+            }, checking ? t('检查中…') : t('重新检查'))),
+          healthReport
+            ? h('ul', { className: 'd2p-testList' }, healthReport.checks.map((check) => {
+                const tone = check.status === 'fail' ? 'd2p-bad'
+                  : check.status === 'warn' ? 'd2p-warn'
+                    : check.status === 'skip' ? 'd2p-testWhere' : 'd2p-ok';
+                const label = check.status === 'fail' ? t('失败')
+                  : check.status === 'warn' ? t('注意')
+                    : check.status === 'skip' ? t('跳过') : t('正常');
+                return h('li', { className: 'd2p-testRow', key: check.id },
+                  h('span', { className: 'd2p-testName' },
+                    check.title,
+                    h('span', { className: 'd2p-testWhere' }, ' · ', check.detail),
+                    check.hint && check.status !== 'ok'
+                      ? h('span', { className: 'd2p-testWhere', style: { display: 'block', marginTop: 2 } }, check.hint)
+                      : null),
+                  h('span', { className: tone }, label));
+              }))
+            : h('p', { className: 'd2p-empty', style: { padding: '10px 0' } }, t('正在检查…'))),
         !snap && !note ? h('p', { className: 'd2p-empty' }, t('正在加载…')) : null,
         h('div', { className: 'd2p-form' },
           field('relayUrl', t('中继地址')),
@@ -810,6 +889,8 @@ window.__ModuleLoader__.load({
       // settings tab then explains what to fill and returns here when ready.
       const [configHint, setConfigHint] = React.useState(null);
       const panelRef = React.useRef(null);
+      const report = React.useSyncExternalStore(health.subscribe, health.getSnapshot);
+      const attention = (report?.checks ?? []).filter((check) => check.status === 'fail' || check.status === 'warn');
 
       React.useEffect(() => {
         panelRef.current?.focus();
@@ -853,6 +934,16 @@ window.__ModuleLoader__.load({
           'aria-selected': tab === value,
           onClick: () => setTab(value),
         }, t(label)))),
+      attention.length > 0
+        ? h('p', { className: 'd2p-banner d2p-bannerBad', role: 'status' },
+            h('b', null, t('健康检查发现 {n} 项问题', { n: attention.length })),
+            ' · ', attention[0].detail, ' ',
+            h('button', {
+              type: 'button',
+              className: 'd2p-btn d2p-mini',
+              onClick: () => setTab('settings'),
+            }, t('查看')))
+        : null,
       tab === 'pair'
         ? h(PairView, { api, t, onConfigRequired: handleConfigRequired })
         : tab === 'devices'
@@ -907,6 +998,26 @@ window.__ModuleLoader__.load({
       ctx.effect(() => services.locale.register(NS, { zh, en }), 'dsh2phone.locale');
       const t = services.locale.bind(NS);
       const api = createApi(services.connection.rpc);
+      // Startup health pass: one pass per UI load (the Host caches the report for
+      // a minute). The result marks the account-menu row when the desktop side is
+      // broken, because the phone's own message never reaches this UI. A Host too
+      // old to know healthCheck (client bundle updated before a restart) still
+      // gets an explicit row instead of a spinner that never resolves.
+      void api.healthCheck()
+        .then((report) => health.set(report))
+        .catch(() => {
+          health.set({
+            at: Date.now(),
+            level: 'warn',
+            ok: false,
+            checks: [{
+              id: 'plugin',
+              title: '健康检查',
+              status: 'warn',
+              detail: '宿主插件未就绪（可能不兼容当前 DSH 版本，或刚改完还没重启 DSH）',
+            }],
+          });
+        });
       ctx.effect(() => services.slots.inject('shell.overlay', () => services.slots.register({
         name: 'shell.overlay',
         id: 'dsh2phone',
@@ -918,7 +1029,11 @@ window.__ModuleLoader__.load({
       ctx.effect(() => installAccountMenuEntry({
         t,
         open: () => store.setOpen(true),
-        subscribe: (listener) => services.locale.subscribe(listener),
+        subscribe: (listener) => {
+          const fromLocale = services.locale.subscribe(listener);
+          const fromHealth = health.subscribe(listener);
+          return () => { fromLocale(); fromHealth(); };
+        },
       }), 'dsh2phone.menu-entry');
     }
 

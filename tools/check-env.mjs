@@ -31,6 +31,8 @@ const rows = [
   { name: "DSH_APP_DIR", value: env("DSH_APP_DIR"), note: "DSH Desktop app tree" },
   { name: "DSH_CREDENTIALS_FILE", value: env("DSH_CREDENTIALS_FILE"), note: "empty = ~/.dsh/.credentials.yaml" },
   { name: "DSH2PHONE_TTL_DAYS", value: env("DSH2PHONE_TTL_DAYS", "30"), note: "" },
+  { name: "DSH2PHONE_LAN_EDGE", value: env("DSH2PHONE_LAN_EDGE", "1"), note: "1 = LAN direct edge on (same-LAN phones skip the relay)" },
+  { name: "DSH2PHONE_LAN_PORT", value: env("DSH2PHONE_LAN_PORT", "43220"), note: "LAN direct edge port" },
   { name: "allow invalid cert", value: env("DSH2PHONE_ALLOW_INVALID_CERT", "0"), note: "1 = skip TLS verification" },
 ];
 

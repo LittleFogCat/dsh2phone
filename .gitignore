@@ -18,6 +18,8 @@ tunnel/autostart.vbs
 *.key
 *.pem
 *.p12
+*.jks
+*.keystore
 deploy/tls/
 deploy/server/tunnel.key
 
@@ -29,9 +31,29 @@ deploy/server/tunnel.key
 .e2e-state/
 .plugin-smoke-state/
 .gate-repro-state/
+.lan-check-state/
 # relay 设备注册表（设备 id / UA / IP）
 **/state/devices.json
 deploy/server/data/dsh-relay/state/
+# tunnel 局域网直连边缘的自签证书（*.pem 已全局忽略，目录兜底）
+tunnel/state/
+
+# ---- Android 构建缓存与本地产物 -------------------------------------------
+# 本机下载的 Gradle 发行版 / 构建机专用 Android 目录（含 debug.keystore）
+.tools/
+.android-home/
+.gradle-home/
+.mobile-e2e-state/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+mobile/android/keystore/
+mobile/android/keystore.properties
+mobile/android/.cxx/
+mobile/android/captures/
+# 交付用 APK / 本地 e2e 截图
+mobile/dist/
 
 # ---- 日志与诊断输出 --------------------------------------------------------
 *.log
@@ -43,3 +65,8 @@ deploy/*.out.txt
 Thumbs.db
 .idea/
 .vscode/
+
+# ---- 临时诊断脚本（用完即删，不入库） --------------------------------------
+.perf-*.mjs
+.tmp-*
+

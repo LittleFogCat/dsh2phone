@@ -138,6 +138,20 @@ try {
   if (typeof probed.control.error !== "string") fail("probe control error", JSON.stringify(probed.control));
   ok(`probe 三段独立返回（control: ${probed.control.ok ? "ok" : "failed"}，public: ${probed.public.ok ? "ok" : "failed"}）`);
 
+  // 7. healthCheck always reports the five legs; the values follow this machine
+  const report = await service.healthCheck(true);
+  const ids = (report?.checks ?? []).map((check) => check.id);
+  for (const id of ["dsh", "lan", "config", "credentials", "relay"]) {
+    if (!ids.includes(id)) fail(`healthCheck leg ${id}`, JSON.stringify(report));
+  }
+  if (typeof report.ok !== "boolean" || !["ok", "warn", "fail"].includes(report.level)) {
+    fail("healthCheck summary", JSON.stringify(report));
+  }
+  for (const check of report.checks) {
+    if (typeof check.detail !== "string" || typeof check.title !== "string") fail("healthCheck shape", JSON.stringify(check));
+  }
+  ok(`healthCheck 五项齐全（level: ${report.level}）`);
+
   console.log("CONFIG CHECK PASS");
 } catch (err) {
   fail("unexpected", err?.stack ?? String(err));

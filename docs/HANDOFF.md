@@ -1,6 +1,6 @@
 # dsh2phone 交接文档（新会话从这里开始）
 
-> 更新：2026-10-27
+> 更新：2026-10-29
 > 用途：交给新的"创造模式"会话继续开发。本文档自包含，不依赖原会话上下文。
 >
 > ⚠️ 本文档已脱敏：域名 → `<PUBLIC_DOMAIN>`、服务器 IP → `<SERVER_IP>`、SSH 账号/私钥 → `<SSH_USER>` / `<SSH_KEY>`、本机路径 → `<REPO_DIR>` / `<DSH_APP_DIR>`。真实值只在本机 `.env`（已被 `.gitignore` 忽略）。配置项一律以 `.env` 为准，代码里不再硬编码。
@@ -315,3 +315,246 @@ profile 里记录为 `"dsh2phone": "link:<REPO_DIR>/dsh2phone-dsh-plugin"`，行
 - `deploy/server/tunnel.key` 仍在本机磁盘（旧的 Startup VBS 会读它）。`.env` 已含同一密钥；换成 `tunnel/autostart.vbs.example` 的新式自启后可以删除该文件。
 - 已安装的 Startup 副本 `dsh2phone-tunnel.vbs` **自带** `RELAY_URL`/`DSH_TUNNEL_KEY`，会覆盖 `.env`；改 `.env` 后要么同步改它，要么删掉那几行让它只读 `.env`。
 - 仓库首次推送前（`origin` 尚无任何提交），密钥从未进入 Git 历史；若曾把 `.env`/`tunnel.key` 推送到别处，应按泄露处理并轮换 `DSH_TUNNEL_KEY`（relay 里它是设备 cookie 的 HMAC 密钥）。
+
+---
+
+## 九、2026-10-29 新增：Android 客户端（mobile/）
+
+### 结果
+
+新增可选的 Android App（`tech.xiaoniu.dsh2phone`，应用名 **MobiDSH**，中文名 **移鲸**；当前 1.1.7 / versionCode 9）：
+
+- **App 内扫码**（zxing-android-embedded，离线，不依赖 Google Play 服务）；
+- **原生配对**：原生 HTTP(S) GET 二维码里的 `/dsh-pair?code=…`，不跟随 302，UA 形如 `dsh2phone/1.1.7 (Android 14; <model>; <androidIdHash8>)`；
+- **凭证管理**：解析 `Set-Cookie`（保留 HttpOnly/SameSite/Path/Expires），用 Android Keystore AES-GCM 加密后存私有 SharedPreferences；
+- **受控 WebView**：CookieManager 注入后**直接**打开 `/dsh/`（顶层导航同时带 `SameSite=Lax` 的 dshdev 与 `Strict` 的 `dsh-auth-*`，e2e 已验证）；外链弹确认走系统浏览器；SSL 错误显式确认；文件选择器；http(s) 直链下载走 DownloadManager（仅对同 origin 带 cookie）；
+- **设置页**：重新配对、解除本机配对、按 origin 开关“允许证书不匹配”、复制诊断信息（不含 cookie）；
+- 默认中文 + 英文 values-en；深浅色主题；无统计/广告；权限仅 INTERNET + CAMERA。
+
+### 目录与构建
+
+```
+mobile/android/                       Gradle 工程（AGP 8.7.3 / Gradle 8.10.2 / compileSdk 35 / minSdk 26）
+  app/src/main/java/tech/xiaoniu/dsh2phone/
+    MainActivity / PairActivity / WebAppActivity / SettingsActivity
+    PairUrl / SetCookie / Cookie / PairingClient / Pairing / PairStore / SecurePrefs / PairProbe / PairingErrors / AppIdentity
+  app/src/test/java/…                JUnit 4（31 个用例）
+mobile/README.md                     构建、签名、安全边界、e2e 说明
+tools/mobile-e2e.mjs                 本地 relay + 假隧道 + adb 驱动 App 的 e2e
+tools/deploy-relay.mjs               relay 上传 + md5 校验 + 重建 + healthz
+```
+
+构建命令（Windows，JDK 17）：
+
+```powershell
+cd mobile/android
+$env:JAVA_HOME='C:\path\to\jdk-17'
+.\gradlew.bat :app:testDebugUnitTest
+.\gradlew.bat :app:assembleDebug
+.\gradlew.bat :app:assembleRelease   # 读取 keystore.properties；缺失时退回 debug 签名
+```
+
+本机签名文件 `mobile/android/keystore/` 与 `keystore.properties` 已忽略，不入库。
+`compileOptions` 固定 **Java 8**：一是代码没有 9+ API，二是这样 AGP 走 bootstrapClasspath 分支，
+不会触发 `androidJdkImage` 的 javac 子进程（在部分受限/加固的 Windows 构建机上更稳）。
+
+### 发现并修复：relay 响应被截断（生产已更新）
+
+`tools/mobile-e2e.mjs` 在原生配对成功页偶发 `ProtocolException: unexpected end of stream`，
+WebView 走入口页时则表现为 `net::ERR_CONTENT_LENGTH_MISMATCH`。两个根因都在 relay 数据面：
+
+1. `handlePair` 在 `pageRespond()`（内部 `socket.end()` 尚未 flush）之后立刻
+   `socket.destroy()`，会把 Content-Length 响应的尾部截掉。已删除这些 destroy。
+2. 数据面用的是 `net.createServer()` 默认 `allowHalfOpen=false`。配对成功页要等 PC 确认
+   （最长 120s）才写响应；Android `HttpURLConnection` 等客户端发完请求就可能半关闭写端，
+   Node 收到 FIN 后自动关掉写端，确认后的响应写不出去。已改为
+   `net.createServer({ allowHalfOpen: true }, ...)`。
+
+- 受影响：等待页、已配对入口页、配对成功页、403 拒绝页、门禁 403 页；
+- 同步：`deploy/server/data/dsh-relay/src/relay.mjs` 已逐字节同步；
+- 部署：`node tools/deploy-relay.mjs`（上传 → md5 校验 → `docker compose up -d --build dsh-relay`
+  → healthz）。2026-10-29 已部署最终版，`healthz=tunnel:online`，线上无 cookie 的 `/dsh-pair`
+  与无效 code 的 403 页面均能完整返回（`</html>` 存在）。
+- 该修复对**浏览器路线同样有效**；旧版 relay 的入口页也可能偶发截断。
+
+App 侧另做了容错：`PairingClient` **先解析 Set-Cookie，再读正文**；正文只用于设备名/入口
+href，读失败时用 `PairUrl.defaultEntryPath()`（通常是 `/dsh/`）兜底，不会因为展示信息截断而
+丢掉已下发的 `dshdev`。这样即使遇到不按 Content-Length 收尾的中间层，配对也不会失败。
+
+### 验证记录
+
+- `:app:testDebugUnitTest`：31/31 通过（PairUrl、SetCookie、HtmlText、AppIdentity、PairingClient（含正文截断）、Pairing）；
+- `node tools/mobile-e2e.mjs`：修复 relay + App 容错后多轮通过（4/4、2/2；原生配对 → cookie 注入 → WebView `/dsh/` → 回主页）；
+- 模拟器：App 启动、扫码 Activity（`com.journeyapps.barcodescanner.CaptureActivity`）、设置页、
+  配对成功页、WebView 假 DSH 页均正常；release APK 安装后启动/扫码正常；
+- 进程重启后仍能从加密 Store 恢复配对（主页显示 origin/设备/在线状态）；
+- relay 回归：`gate-repro`、`relay-dedupe-check`、`relay-pages-theme-check`、`plugin-smoke` 均通过。
+
+### 边界
+
+- WebView 仍是 Chromium，SNI/TLS 指纹过滤下仍可能被重置；IP 直连 + 显式信任证书是应急方案。
+- 下载只支持 http(s) 直链；`blob:`/`data:` 提示用浏览器。
+- 未做 iOS（Windows 无法编译）；纯 Java 的配对/解析层可复用。
+- App 重装会丢 cookie，需要重新扫码；relay 会按 UA 去重复用设备条目（UA 含 Android ID 哈希）。
+
+### 隐私
+
+`mobile/dist/`（APK、e2e 截图）已忽略；`mobile/android/local.properties`、`keystore.properties`、
+`keystore/`、`.android-home/`、`.tools/`、`.mobile-e2e-state/` 均已忽略。截图里只有
+`10.0.2.2:13200` 这类模拟器地址与 E2E 测试设备名，不含真实域名/设备。
+
+### 2026-10-29 Android 1.1.x：沉浸式 / 键盘 / 长按复制 / 自动升级（已部署）
+
+- **品牌/图标**：1.1.3 起应用名 `MobiDSH`（中文 `移鲸`）；启动图标为大肥鱼 Q 版，
+  作者 YunYueSama，来源 `https://github.com/YunYueSama/codex-deepseek-pet`，按大肥鱼项目
+  署名许可 1.0 使用，已裁剪/缩放并合成自适应图标；`mobile/THIRD_PARTY_NOTICES.md` 保留署名。
+- **全屏沉浸式**：`activity_web.xml` 去掉 MaterialToolbar，WebView 占满状态栏以下区域；
+  `WindowCompat.setDecorFitsSystemWindows(false)` + `WindowInsets` 给根布局加 top/bottom padding。
+  状态栏/导航栏颜色由 `WebAppActivity` 注入 JS `MutationObserver` + 500ms 轮询读取
+  `getComputedStyle(document.body).backgroundColor`，通过 `Dsh2PhoneNative` bridge 回传；
+  页面主题变化/懒加载完成后会自动同步。深色接近纯黑时状态栏用 `#333`（部分 SystemUI
+  的对比度保护会把近黑色抬成白色）。
+- **长按复制**：`WebAppActivity` 对 WebView 显式 `setLongClickable(true)`、`setFocusable(true)`、
+  `setFocusableInTouchMode(true)`；实测长按文本弹出 Copy / Share / Select all（浮层在 WebView
+  surface 内，uiautomator 抓不到节点，靠截图验证）。
+- **键盘**：`adjustResize` + IME insets 直接改根布局 padding，弹出即缩小 WebView；
+  首屏通过 `clearFocus` + JS `focus guard`（focusin/interval，4 秒内兜底 blur，用户 touchstart
+  即解锁）抑制 autofocus 自动弹键盘。发送后收键盘：页面任意**短 click**（输入框本身除外）
+  或 Enter 通过 bridge 调 `hideKeyboard()`；e2e 实测进入 `false`、点输入框 `true`、点发送 `false`。
+- **初始页 padding**：`MainActivity`/`PairActivity`/`SettingsActivity` 统一 `Bars.apply()`，
+  按 systemBars + displayCutout + IME insets 给根布局加 padding，状态栏不再压住标题栏。
+- **二次进入秒开**：`WebAppActivity` 从主页返回时不 `finish()`，而是用
+  `FLAG_ACTIVITY_REORDER_TO_FRONT` 把 `MainActivity` 提到前台；再次进入用同一个 flag
+  把已有 WebView Activity 提到前台，`onCreate`/`onPageStarted` 不再发生，e2e 验证
+  `/dsh/` 请求数 1 → 1。主页返回键 `finishAffinity()`，避免 WebApp 从栈里重新冒出。
+- **自动检查更新**：`UpdateManager` 在 `MainActivity.onResume`（已配对时，15s 冷却）读取
+  `<origin>/dsh2phone/latest.json`；自动检查失败会 3s 后重试 2 次，不把一次网络失败当成
+  “已检查”，避免用户必须手动点“检查更新”。
+- **状态栏可见性**：每次按页面背景色明确设置 `WindowInsetsControllerCompat` 图标明暗，
+  resume 时重新上色；深色页面统一用 `#333`，避免近黑色被 SystemUI 对比度保护抬成白色
+  导致背景和图标同时不可见。
+- **自动升级**：
+  ```json
+  {"versionCode":9,"versionName":"1.1.7","apkUrl":"dsh2phone-1.1.7-release.apk",
+   "sha256":"…","size":2381245,"notes":"…"}
+  ```
+  versionCode 更大 → 对话框 → 原生下载（沿用 `pairing.allowBadCert` 的 TLS 策略）→
+  SHA-256/size 校验 → `FileProvider` 打开系统安装器；设置页有「检查更新」。
+  权限 `REQUEST_INSTALL_PACKAGES` + `res/xml/file_paths.xml`；1.0.0 无此代码，需手动装 1.1.7。
+- **发布页**：`www/dsh2phone/index.html` 为深色海洋发布页，含英雄区（`whale.webp`/`icon.webp`）、
+  1.1.7 更新卡、能力网格、版本时间线、三步安装和 SHA-256 复制；移动端 390px 已验证。
+- **发布**：`www/dsh2phone/` 放 `dsh2phone-1.1.7-release.apk`、`latest.json`、`index.html`，
+  `dsh2phone-latest.apk` 指向 1.1.7；下载页/IP 链接可直接安装。1.1.7 release SHA-256
+  `ad19abd08d65acbe7d7caa6b04c4cdd938d38d89c42fc661faee8b10d58e0103`。
+- **验证**：31 个单测通过；e2e 配对/WebView/IME/二次进入测试通过；更新对话框与下载/安装权限流程在模拟器
+  验证；release 1.1.7 安装后启动/扫码正常。
+
+### 2026-11-03 新增：局域网直连（Android 1.2.0 / 产品 1.4.0）
+
+手机与电脑在**同一局域网**时，App（1.2.0 起，versionCode 10）自动直连电脑上的局域网边缘，不再绕公网
+relay；探测失败/断网自动回落公网。PC 端开关：`.env` 的 `DSH2PHONE_LAN_EDGE`（默认 1）、
+`DSH2PHONE_LAN_PORT`（默认 43220）。
+
+**三端数据流**：
+
+1. **tunnel（PC）**：run 模式启动 `tunnel/src/lan-edge.mjs` —— 0.0.0.0:LAN_PORT 上的 HTTPS 反向代理。
+   自签证书（node-forge，持久化 `tunnel/state/lan-edge-{cert,key}.pem`，已忽略）；转发行为对齐 nginx：
+   Host 重写为 `DSH_AUTHORITY`、剥离 Origin，WS upgrade 原样穿透（直连根 = DSH 根，**没有 /dsh/ 前缀**）。
+   门禁：本地校验 `dshdev` HMAC（密钥就是 DSH_TUNNEL_KEY）+ 设备白名单缓存；白名单来自控制面
+   `devices.list` 请求 + relay 的 `devices` 广播（relay 本来就会向所有控制连接广播注册表变化，零协议改动）。
+   未同步前 fail closed。控制面新帧 `{t:"lan.announce", lan:{port, fp, ips}}`（`lan:null` 清空；断线 relay 清空）。
+2. **relay**：存储 `tunnelLan`（`sanitizeLan` 严格校验）；数据面在**设备门禁之后**新增
+   `GET /dsh-lan`（公网 URL `/dsh/dsh-lan`，nginx 剥前缀；也兼容裸路径）返回 `{"lan":...|"null"}`。
+   不需要改 nginx。**已同步部署副本**（md5 一致）；**生产 relay 尚未重建**——部署：
+   `node tools/deploy-relay.mjs`。
+3. **App**：`LanDirect.resolve()` —— 缓存地址快探（500ms，PairStore 缓存 lanOrigin/lanFp）与 relay 查询
+   并行，逐候选做**指纹锁定**探活（`/dsh2phone-lan-hello`，TrustManager 只认 sha256(DER)==fp），
+   命中 → 以 `https://<ip>:<port>/` 进入（injectCookies 到直连 origin）；未命中 → 公网。WebAppActivity：
+   `onReceivedSslError` 对直连 origin 只认指纹（`SslCertificate.getX509Certificate()`，注意它不是
+   X509Certificate 本体）；指纹不匹配或主帧网络错误 → `lanFallback()` 静默回落公网（每会话一次）。
+   DownloadManager 无法锁定自签证书 → 直连同源下载改写为公网等价地址（entryPath 即公网前缀）。
+   主页状态行显示"电脑端在线 · 局域网直连"。
+
+**安全模型**：直连目标身份 = relay 经设备门禁下发的证书指纹（SHA-256 of DER），App 端锁定；LAN 内
+中间人无法伪造 PC；deny/allow/remove/panic 通过广播实时同步（deny 后直连同样 403）。直连流量不过
+relay，插件设备列表的"最后在线"只反映公网访问。首次启动 tunnel 若弹 Windows 防火墙询问需允许
+（或 `netsh advfirewall firewall add rule name="dsh2phone lan" dir=in action=allow protocol=TCP localport=43220`）。
+
+**验证（全部通过）**：
+
+- `node tools/lan-direct-check.mjs`：本地 relay + 假 DSH + 真 tunnel——/dsh-lan 门禁、hello 探活、
+  通告指纹==实际证书、Host 重写/Origin 剥离/cookie 透传、WS upgrade、deny→403→allow→200 实时性、
+  伪造签名 403。
+- gradle 单测 39/39（新增 LanDirectTest 8 个：指纹归一化/origin 拼接/候选解析/边界；注意 **org.json 在
+  JVM 单测里是 stub**，LanDirect 自带了一个极小 JSON 解析器 `MiniJson`）。
+- `tools/mobile-e2e.mjs` 两种模式：默认（公网回落）与 `MOBILE_E2E_LAN=1`（假隧道通告真 LAN 边缘，
+  断言 WebView 实际从直连边缘加载且带 cookie）——都 SMOKE PASS。
+- 回归：plugin-smoke / gate-repro / relay-dedupe-check / relay-pages-theme-check / plugin-config-check /
+  check-env / version-check。
+
+**顺手修复**：`tools/mobile-e2e.mjs` 的 adb 调用全部改为异步 execFile——spawnSync 会阻塞事件循环，
+导致假隧道回不了 relay 的 pong 被踢（偶发 `tunnel dropped: pong timeout` → 配对 503）。
+
+**发布状态（2026-11-03 已全部执行）**：生产 relay 已重建（md5 `4a6c248c…`，`tunnel:online`，容器日志出现
+`lan edge: 192.168.142.1, 192.168.254.1, 192.168.31.83:43220`）；本机隧道已重启加载直连边缘（:43220，
+自签证书持久化）；`https://<PUBLIC_DOMAIN>/dsh2phone/latest.json` 已更新到 versionCode 10（1.2.0），
+`dsh2phone-1.2.0-release.apk` / `dsh2phone-latest.apk` 已上传（release SHA-256
+`a0f5784baf2d66669596994ca5693ded2fbba4efcfd156533e1ef8d487eb1c2f`，上传后 md5 校验一致）。生产验证：
+带设备 cookie 请求 `/dsh/dsh-lan` 返回真实候选 → 本机 `https://127.0.0.1:43220/`（直连边缘根 = DSH 根，
+**没有 /dsh/ 前缀**；`/dsh/` 会 404，属设计行为）带 dshdev + 铸造 DSH cookie 返回 200 44KB 含
+`__DSH_BOOT__`。手机端等 1.2.0 更新后在家即生效；若手机连不上直连，优先查 Windows 防火墙对
+node.exe 43220 入站（专用网络）的放行。e2e 当天模拟器（Pixel_9_Pro_XL_API_34）曾出现整机不健康
+（system_server 累计系统态 CPU 3587s、UiAutomation 连接超时、首启 Chromium 初始化 ANR），冷启动后
+恢复——模拟器卡启动时先查 `C:\android_avd\.android` 的写权限（沙箱会拒绝 emulator 写锁文件，需在
+提权会话里启动）。发布页 `www/dsh2phone/index.html` 的版本卡仍是 1.1.7 文案（App 升级由 latest.json
+驱动，不受影响），下次改发布页时顺带更新。
+
+### 2026-11-20 Android 1.2.1：全端竖屏 + 返回键（已实现，待真机复验）
+
+**为什么返回键要改**：DSH 的 Web GUI 是单路由 SPA，前端刻意不写 URL 历史——在
+`dsh-web-frontend` 的 bundle 里搜不到 `pushState` / `replaceState` / `history.back`（只有 PDF 预览的
+第三方代码里有一处），所以 DSH 页面里 `webView.canGoBack()` **恒为 false**。旧实现
+（canGoBack → goBack，否则回主页）实际等价于"一按返回就回主页"。换句话说：网页里没有"后退"可退，
+返回键真正能做的是**关掉页面里打开的浮层**。
+
+**实现**（`WebAppActivity`）：
+
+1. `handleBack()` 先 `evaluateJavascript(BACK_DISMISS_JS)`：
+   - 按 DSH 自己的浮层契约找最上层可见浮层：`[role=dialog][aria-modal=true]`、`[role=alertdialog]`、
+     `[role=menu]`（DSH 前端 modal 栈用的就是 `[role="dialog"][aria-modal="true"], [role="menu"]`；
+     插件的配对弹窗同样是 `role=dialog aria-modal=true`），`display:none` / `visibility:hidden` /
+     零尺寸 / 透明度 0 的跳过；
+   - 向它派发一个冒泡的 `Escape` keydown（`key/code=Escape`，`keyCode/which=27`）。DSH 的浮层在
+     `document` 捕获阶段监听 Escape，事件从浮层冒泡到 document 就会被关掉；插件弹窗
+     （`dsh2phone-dsh-plugin/client.js`）也是同一套 Escape 契约；
+   - 同一个浮层 2.5s 内第二次被请求关闭 → 返回 false（说明它不认 Escape），交回原生流程，
+     避免返回键被"卡死"。
+2. 页面返回 true → 这次返回被吞掉；否则 `canGoBack()` 优先 `goBack()`，最后把 `MainActivity`
+   用 `REORDER_TO_FRONT` 提到前台（不 finish，WebView 实例与页面状态保留，二次进入仍秒开）。
+3. App 自己的错误横幅可见时先收横幅；JS 不回调时 400ms 超时直接走第 2 步，返回键不会失灵。
+4. `MainActivity` 的 `onBackPressed()` 改成 `OnBackPressedDispatcher` 回调——targetSdk 35 的预测性
+   返回默认开启，已废弃的 `onBackPressed()` 可能根本收不到返回键。
+
+**竖屏**：四个 Activity（`MainActivity` / `PairActivity` / `WebAppActivity` / `SettingsActivity`）+ zxing
+`CaptureActivity` 都声明 `android:screenOrientation="portrait"`（zxing 库 manifest 是 `sensorLandscape`，
+用 `tools:replace="android:screenOrientation"` 覆盖），扫码改为 `setOrientationLocked(true)`；
+用 `tools:ignore="LockedOrientationActivity"` 明确忽略 lint 的"大屏应支持旋转"告警。注意 Android 16 起
+系统会忽略宽度 ≥600dp 应用的方向限制（平板 / 分屏 / 自由窗口仍可能横过来），这是系统行为。
+
+**验证**：
+
+- `:app:assembleDebug`、`:app:assembleRelease`（含 `lintVitalRelease`）通过；合并清单
+  （`app/build/intermediates/merged_manifest/debug/…/AndroidManifest.xml`）里 5 个 Activity 全是 `portrait`；
+- `:app:testDebugUnitTest` 通过；
+- 新增 `node tools/mobile-back-check.mjs`：把 `BACK_DISMISS_JS` 从 Java 源码抽出来，用极简 DOM 夹具
+  跑 9 项断言（无浮层 / 关掉对话框 / 隐藏浮层不吞键 / 关不掉时第二次交回 / 冷却窗口 / 最上层优先），全过；
+- 本机沙箱里 Chromium 起不来（mojo 命名管道被拒），`tools/mobile-e2e.mjs` 又需要 adb 设备，
+  所以真实 WebView 行为**待复验**，建议按这个顺序在真机 / 模拟器点一遍：
+  1. 主页、配对页、设置页、DSH 页把手机转横，界面应保持竖屏；
+  2. DSH 里打开账户菜单 / 设置 / 模型选择 / 插件配对弹窗，按返回键应只关浮层，不退回主页；
+  3. 浮层都关掉后再按 → 回主页；主页再按 → 退出 App；
+  4. 连按两次返回不闪退、不白屏；右侧栏（文件 / 终端）这类不是 dialog/menu 的面板不会被返回键关掉。
+
+**产物**：`mobile/dist/dsh2phone-1.2.1-release.apk`（versionCode 11，`mobile/dist/latest.json` 记录了
+sha256/size；尚未上传服务端）。发布时把 APK 与 `latest.json` 放到 `/dsh2phone/`，并更新
+`dsh2phone-latest.apk` 指向 1.2.1。

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 手机轮廓 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M39,24h30a8,8 0 0 1 8,8v44a8,8 0 0 1 -8,8h-30a8,8 0 0 1 -8,-8v-44a8,8 0 0 1 8,-8z" />
+    <!-- 屏幕 -->
+    <path
+        android:fillColor="#2563EB"
+        android:pathData="M37,36h34v36h-34z" />
+    <!-- 二维码图案 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M41,40h8v8h-8zM59,40h8v8h-8zM41,56h8v8h-8zM59,56h4v4h-4zM65,56h2v2h-2zM59,62h8v2h-8zM53,44h2v2h-2zM53,48h2v2h-2zM49,52h2v2h-2zM53,64h2v2h-2zM63,64h2v2h-2z" />
+    <!-- 听筒 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M50,79h8a1,1 0 0 1 0,2h-8a1,1 0 0 1 0,-2z" />
+</vector>

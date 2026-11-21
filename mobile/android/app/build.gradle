@@ -1,0 +1,74 @@
+plugins {
+    id "com.android.application"
+}
+
+def keystoreFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystoreFile.exists()) {
+    keystoreFile.withInputStream { keystoreProps.load(it) }
+}
+
+android {
+    namespace "tech.xiaoniu.dsh2phone"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "tech.xiaoniu.dsh2phone"
+        minSdk 26
+        targetSdk 35
+        versionCode 11
+        versionName "1.2.1"
+        resConfigs "zh", "en"
+        vectorDrawables {
+            useSupportLibrary true
+        }
+    }
+
+    signingConfigs {
+        if (keystoreFile.exists()) {
+            release {
+                storeFile rootProject.file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            // 本机没有 keystore.properties 时退回 debug 签名，保证 assembleRelease 仍可构建；
+            // 正式分发必须在 mobile/android/keystore.properties 里配置自己的 keystore。
+            signingConfig keystoreFile.exists() ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        // 1.8 即可满足本工程（无 java.time / java.net.http 等 9+ API）。
+        // 同时让 AGP 走 bootstrapClasspath 分支，不触发 androidJdkImage 的 javac 子进程，
+        // 这在部分受限/加固的 Windows 构建机上更稳。
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    buildFeatures {
+        buildConfig false
+        viewBinding false
+    }
+
+    lint {
+        abortOnError true
+        checkReleaseBuilds true
+    }
+}
+
+dependencies {
+    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "com.google.android.material:material:1.12.0"
+    implementation "com.journeyapps:zxing-android-embedded:4.3.0"
+
+    testImplementation "junit:junit:4.13.2"
+}

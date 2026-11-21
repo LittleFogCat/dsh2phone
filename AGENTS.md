@@ -44,7 +44,7 @@ python tools/redact_screenshots.py
 | `authority` 恒为 `127.0.0.1:43120` | `.env` `DSH_AUTHORITY`、`host.js`、`tools/*` | 它等于 DSH 看到的 Host 头；跟着公网域名改会导致铸造的 cookie 校验失败 |
 | nginx 固定 `Host: 127.0.0.1:43120` + `Origin ""` | `deploy/nginx/dsh.location` | DSH 的信任栅栏只认 loopback Host |
 | DSH cookie 格式（`v1.<body>.<sig>`，name = `dsh-auth-` + b64url(sha256(authority))） | `tunnel/src/dsh-cookie.mjs`、`dsh2phone-dsh-plugin/dsh-cookie.js` | 与 `@deepseek-ai/dsh-client-connection` 的实现逐字节对齐 |
-| relay 控制面帧类型（`hello`/`hello.ok`/`open`/`close`/`pair.*`/`devices.*`，二进制帧 `[4B streamId BE][payload]`） | `relay/src/relay.mjs`、`relay-admin.js` | 三端共用；改动要同时改 PC 隧道、插件、e2e 脚本 |
+| relay 控制面帧类型（`hello`/`hello.ok`/`open`/`close`/`pair.*`/`devices.*`/`lan.announce`，二进制帧 `[4B streamId BE][payload]`） | `relay/src/relay.mjs`、`relay-admin.js` | 三端共用；改动要同时改 PC 隧道、插件、e2e 脚本 |
 | 设备 cookie `SameSite=Lax`、DSH cookie `SameSite=Strict` | `relay/src/relay.mjs` | 扫码是跨站顶层导航 |
 | `publicKeyUrl` 语义 = 二维码内容前缀 | — | 手机按它落 origin，决定了 cookie 复用范围 |
 
@@ -91,7 +91,7 @@ node tools/version-check.mjs                        # 自检：版本已升 / �
 | `deploy/server/data/dsh-relay/src/relay.mjs` | **同一份代码的部署副本**，两边必须逐字节一致 | 高（忘记同步=线上不一致） |
 | `tunnel/src/tunnel.mjs` | run/pair/devices/allow/deny/remove/panic、心跳看门狗（15s 检查 / 70s 静默重连） | 中 |
 | `tunnel/src/dsh-cookie.mjs` | cookie 铸造（CLI 侧） | 低（契约固定） |
-| `dsh2phone-dsh-plugin/host.js` | 12 个 Typert Remote 方法（配对 / 设备 / 设置）+ `.env` 配置解析 | 中 |
+| `dsh2phone-dsh-plugin/host.js` | 13 个 Typert Remote 方法（配对 / 设备 / 设置 / 健康检查）+ `.env` 配置解析 | 中 |
 | `dsh2phone-dsh-plugin/client.js` | 纯前端：三标签弹窗（配对 / 设备管理 / 设置）、账号菜单行、轮询 `pairInspect` | 中 |
 | `shared/env.mjs` | `.env` 解析 + `updateEnvFile()` 原子写回（无依赖） | 低（但所有端依赖它） |
 | `deploy/nginx/*` | 三条 location | 高（Host/Origin 不能动） |
@@ -138,6 +138,8 @@ Copy-Item relay/src/relay.mjs deploy/server/data/dsh-relay/src/relay.mjs -Force
 
 ## 5. 提交与发布
 
+- **每次修改完成后必须提交并推送**（`git commit` + `git push`）：不允许把改动只留在本地工作区；
+  推送前按本节与 1.5 节升级版本、过检查。
 - 提交信息：`type: 中文简述`，type ∈ `feat` / `fix` / `chore` / `docs` / `refactor` / `test`；正文说明"改了什么 + 为什么 + 怎么验证的"。
 - **永不提交** `.env`、密钥、真实 IP/域名、含个人信息的截图。
 - 推送前：`npm run check-env`、相关验证脚本、`git add --dry-run --all` 三项都过。
@@ -155,6 +157,8 @@ Copy-Item relay/src/relay.mjs deploy/server/data/dsh-relay/src/relay.mjs -Force
 6. client 不 require UI primitives，只用 `--dsw-alias-*` 主题 token；弹窗走 `shell.overlay`。
 7. 隧道静默半开靠心跳看门狗兜底（70s 无入站 → `terminate()` 重连）。
 8. 账号菜单无槽位，入口是 DOM 嫁接；匹配条件很窄（同时有"设置"与"登录/退出登录"行）。
+9. DSH 0.2.2 起 `@deepseek-ai/dsh-client-ui-slots` 不再是独立客户端模块；`package.json` 的 `dsh.client.inject` 列了它，整包客户端会被**静默跳过**（`__DSH_BOOT__.entries` 里没有 dsh2phone，菜单行也消失）。只列 connection / locale。
+10. 插件不设 DSH 版本上限（peer `>=0.2.1-rc.2`）：新版会被装进来，但 API 可能已经变了。`apply()` 先做结构探测，激活抛错时只注册一个仅含 `healthCheck` 的诊断壳，并写 `[dsh2phone]` 日志（入口不再无声消失）。升级 DSH 后先搜日志里的 `[dsh2phone]`，再看设置页的健康检查；确认可用后再决定是否升级插件。
 
 ## 7. 环境事实
 

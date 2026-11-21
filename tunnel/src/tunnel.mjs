@@ -10,19 +10,28 @@
 //   node tunnel.mjs remove <id>  forget a device
 //   node tunnel.mjs panic        revoke every device immediately
 import net from "node:net";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
+import { join } from "node:path";
 // Loads <repo>/.env before anything reads process.env (see shared/env.mjs).
 import "../../shared/env.mjs";
-import { env, envFlag } from "../../shared/env.mjs";
+import { env, envFlag, REPO_ROOT } from "../../shared/env.mjs";
 import { WebSocket } from "ws";
 import { dshAuthority, mintDshCookie } from "./dsh-cookie.mjs";
+import { startLanEdge } from "./lan-edge.mjs";
 
 const RELAY_URL = env("RELAY_URL", "");
 const TUNNEL_KEY = env("DSH_TUNNEL_KEY", "");
 const UPSTREAM_HOST = env("UPSTREAM_HOST", "127.0.0.1");
 const UPSTREAM_PORT = Number(env("UPSTREAM_PORT", "43120"));
 const PUBLIC_PAIR_URL = env("PUBLIC_PAIR_URL", "");
+// LAN direct edge (see lan-edge.mjs): on by default; the phone only uses it
+// when the relay hands out the address AND the LAN probe succeeds.
+const LAN_EDGE_ENABLED = !/^(0|false|no|off)$/iu.test(String(env("DSH2PHONE_LAN_EDGE", "1")).trim());
+const LAN_PORT = Number(env("DSH2PHONE_LAN_PORT", "43220"));
+const LAN_WATCH_INTERVAL_MS = 60_000;
+// 局域网直连边缘的证书等本地状态（*.pem 已被 .gitignore 覆盖）。
+const TUNNEL_STATE_DIR = join(REPO_ROOT, "tunnel", "state");
 // When the relay is addressed by IP, its certificate (issued for a domain name)
 // cannot validate; set TUNNEL_INSECURE=1 to skip verification.
 const WS_OPTIONS = {
@@ -56,6 +65,20 @@ function deviceNameFromUA(ua) {
   return `Desktop · ${base}`;
 }
 
+/** 解析 Cookie 头里的 dshdev（值形如 <id>.<hmac>，与 relay 签发格式一致）。 */
+function parseDeviceCookie(cookieHeader) {
+  if (typeof cookieHeader !== "string") return undefined;
+  for (const segment of cookieHeader.split(";")) {
+    const at = segment.indexOf("=");
+    if (at === -1 || segment.slice(0, at).trim() !== "dshdev") continue;
+    const value = segment.slice(at + 1).trim();
+    const dot = value.lastIndexOf(".");
+    if (dot === -1) return undefined;
+    return { id: value.slice(0, dot), sig: value.slice(dot + 1) };
+  }
+  return undefined;
+}
+
 // ---------- one control connection, shared by all modes ----------
 function connectControl({ onData, onClose }) {
   const ws = new WebSocket(RELAY_URL, WS_OPTIONS);
@@ -86,13 +109,67 @@ function connectControl({ onData, onClose }) {
 }
 
 // ---------- run mode ----------
-function runTunnel() {
+async function runTunnel() {
   /** @type {Map<number, net.Socket>} */
   const streams = new Map();
   let online = false;
   let retry = 0;
   let closedByUs = false;
   let ws = null;
+
+  // ---- LAN direct: device allowlist cache, synced from the relay ----
+  // relay 会在注册表变化时向所有控制连接广播 devices 帧（配对/allow/deny/
+  // remove/panic 都会触发），这里只维护一份内存缓存供局域网门禁查询；
+  // 控制面没同步到列表之前一律拒绝（fail closed）。
+  /** @type {Map<string, string>} */
+  const deviceCache = new Map();
+  function updateDeviceCache(list) {
+    deviceCache.clear();
+    for (const d of list ?? []) {
+      if (d && typeof d.id === "string" && (d.status === "allow" || d.status === "deny")) {
+        deviceCache.set(d.id, d.status);
+      }
+    }
+  }
+  function verifyDeviceSig(id, sig) {
+    const expected = Buffer.from(createHmac("sha256", TUNNEL_KEY).update(id).digest().toString("base64url"));
+    const actual = Buffer.from(sig);
+    return expected.byteLength === actual.byteLength && expected.equals(actual);
+  }
+  function gateDevice(cookieHeader) {
+    const parsed = parseDeviceCookie(cookieHeader);
+    if (!parsed || !verifyDeviceSig(parsed.id, parsed.sig)) return "unknown";
+    const status = deviceCache.get(parsed.id);
+    if (!status) return "unknown";
+    return status === "allow" ? "ok" : "denied";
+  }
+
+  const lanEdge = LAN_EDGE_ENABLED && LAN_PORT >= 1 && LAN_PORT <= 65535
+    ? await startLanEdge({
+        port: LAN_PORT,
+        upstreamHost: UPSTREAM_HOST,
+        upstreamPort: UPSTREAM_PORT,
+        authority: dshAuthority(),
+        stateDir: TUNNEL_STATE_DIR,
+        gateDevice,
+        log,
+      })
+    : { info: () => null, close() {} };
+  if (LAN_EDGE_ENABLED && !(LAN_PORT >= 1 && LAN_PORT <= 65535)) {
+    log(`invalid DSH2PHONE_LAN_PORT=${LAN_PORT}, LAN direct disabled`);
+  }
+
+  // 上次通告的内容（JSON 串），用于在 IP 变化时才重发 lan.announce。
+  let announcedLan = null;
+  function sendLanAnnounce() {
+    if (ws?.readyState !== 1) return;
+    const info = lanEdge.info();
+    const serialized = info ? JSON.stringify(info) : "null";
+    if (serialized === announcedLan) return;
+    announcedLan = serialized;
+    try { ws.send(JSON.stringify({ t: "lan.announce", lan: info })); } catch { /* ignore */ }
+  }
+  const lanWatch = setInterval(() => sendLanAnnounce(), LAN_WATCH_INTERVAL_MS);
 
   function connect() {
     log(`connecting ${RELAY_URL} (attempt ${retry + 1})`);
@@ -123,6 +200,9 @@ function runTunnel() {
           online = true;
           retry = 0;
           log("relay online, forwarding to", `${UPSTREAM_HOST}:${UPSTREAM_PORT}`);
+          // 同步设备白名单（响应是 devices 帧），并通告局域网直连边缘。
+          try { ws.send(JSON.stringify({ t: "devices.list" })); } catch { /* ignore */ }
+          sendLanAnnounce();
         }
         return;
       }
@@ -155,12 +235,16 @@ function runTunnel() {
       } else if (msg.t === "close") {
         const sock = streams.get(msg.id);
         if (sock) { sock.destroy(); streams.delete(msg.id); }
+      } else if (msg.t === "devices") {
+        // 白名单实时同步：配对 / allow / deny / remove / panic 都会广播到这里。
+        updateDeviceCache(msg.devices);
       } else if (msg.t === "device.registered") {
         log(`🔔 新设备已配对: ${msg.device?.name} (${String(msg.device?.id).slice(0, 8)})`);
       }
     });
     ws.on("close", () => {
       clearInterval(heartbeat);
+      clearInterval(lanWatch);
       online = false;
       for (const [id, sock] of streams) { sock.destroy(); streams.delete(id); }
       if (closedByUs) return;
@@ -173,6 +257,8 @@ function runTunnel() {
 
   process.on("SIGINT", () => {
     closedByUs = true;
+    clearInterval(lanWatch);
+    try { lanEdge.close(); } catch { /* ignore */ }
     try { ws?.close(); } catch { /* ignore */ }
     process.exit(0);
   });
@@ -307,7 +393,7 @@ function runPanic() {
 }
 
 switch (mode) {
-  case "run": runTunnel(); break;
+  case "run": runTunnel().catch((err) => { console.error("[tunnel]", err); process.exit(1); }); break;
   case "pair": runPair(); break;
   case "devices": runDevices(); break;
   case "allow": runSet(process.argv[3], "allow"); break;

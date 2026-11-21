@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Dsh2Phone"
+        android:usesCleartextTraffic="false">
+
+        <!-- 全端竖屏：DSH 的 Web GUI 是桌面布局，横屏只会挤压内容，WebView 里再做旋转
+             适配没有收益；大屏/自由窗口下系统仍可能横过来（Android 16 起对大屏的
+             方向限制会被忽略），属于系统行为。 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
+            tools:ignore="LockedOrientationActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="pair"
+                    android:scheme="dsh2phone" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".PairActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
+            tools:ignore="LockedOrientationActivity" />
+
+        <activity
+            android:name=".WebAppActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|uiMode"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Dsh2Phone.Web"
+            android:windowSoftInputMode="adjustResize"
+            tools:ignore="LockedOrientationActivity" />
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            tools:ignore="LockedOrientationActivity" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- zxing-android-embedded 的 CaptureActivity 由依赖库 manifest 自动合并；
+             库里把它声明成 sensorLandscape，这里覆盖成竖屏，保证扫码页也禁止横屏。 -->
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="portrait"
+            tools:ignore="LockedOrientationActivity"
+            tools:replace="android:screenOrientation" />
+    </application>
+</manifest>

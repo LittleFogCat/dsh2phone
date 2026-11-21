@@ -22,7 +22,9 @@
 - **一次性配对**：5 分钟配对码 → 手机访问 `/dsh-pair` → 电脑端弹窗确认 → 注册设备并下发 cookie
 - **即时吊销**：设备列表 / 单台停用 / 删除 / 全部吊销（panic），对公网立即生效
 - **穿透友好**：PC 只做出站 WSS，无需公网 IP、端口映射或反向代理到本机
+- **局域网直连**：手机与电脑同网时，App 自动改走 PC 上的局域网 HTTPS 边缘，不再绕公网 relay（证书指纹锁定，deny/panic 即时同步）
 - **可复现验证**：本地 relay + 假隧道 + 真 GUI 的端到端脚本都在 `tools/`
+- **可选 Android App**：App 内扫码 + 原生配对 + 受控 WebView，避开浏览器 cookie / 扫码跳转限制（`mobile/`）
 
 ## 组成
 
@@ -31,6 +33,7 @@
 | `relay/` | 公网中继：设备门禁、配对端点、控制面、TCP 多路复用（Docker 部署） | `relay/src/relay.mjs` |
 | `tunnel/` | 本机隧道：出站 WSS、配对 CLI、设备管理、cookie 铸造 | `tunnel/src/tunnel.mjs` |
 | `dsh2phone-dsh-plugin/` | DSH Desktop 插件：账号菜单里的"配对手机"二维码弹窗 + 设备管理 | `host.js` / `client.js` |
+| `mobile/` | Android 客户端：App 内扫码、原生配对、加密凭证、受控 WebView | `mobile/android/` |
 | `deploy/` | nginx location、服务器 compose、IP 入口示例、本地仿真代理 | `deploy/nginx/`、`deploy/server/` |
 | `shared/` | 唯一配置入口：加载 `.env` | `shared/env.mjs` |
 | `docs/` | 交接文档、IP 应急方案、可行性评估（均已脱敏） | `docs/HANDOFF.md` |
@@ -105,6 +108,55 @@ plugin_manager install_bundle target=<REPO_DIR>\dsh2phone-dsh-plugin
 
 CLI 备用：`node tunnel/src/tunnel.mjs pair`（二维码打在终端 + Y/n 确认）。
 
+### 5.1 使用 Android App（可选）
+
+`mobile/` 里是原生 Android 客户端（包名 `tech.xiaoniu.dsh2phone`，应用名 `MobiDSH`，中文名 `移鲸`）：
+
+1. 电脑端照常生成“配对手机”二维码。
+2. App → **扫描二维码配对**（或粘贴配对链接）→ 确认主机 → 电脑端点“允许”。
+3. App 内直接进入 DSH；之后从主页一键进入。
+
+它把配对请求放在原生网络层、凭证用 Android Keystore 加密，并在受控 WebView 里打开 DSH，
+所以不依赖浏览器 cookie / 扫码跳转 / 添加到主屏幕。1.1.0 起 WebView 全屏沉浸式（无原生 header，
+状态栏配色随页面）、修复键盘遮挡/自动弹键盘，并支持读取同源 `/dsh2phone/latest.json` 自动升级。
+1.2.1 起全端锁竖屏，返回键先关页面浮层（账户菜单 / 设置 / 模型菜单 / 配对弹窗），没有浮层再回主页。
+构建、签名、安全边界、自动升级协议与本地 e2e 见 [`mobile/README.md`](mobile/README.md)。
+
+> 原生配对会读取 `/dsh-pair` 成功页，WebView 直接进入 `/dsh/`；relay 必须是包含
+> “响应写完再关闭 socket + allowHalfOpen”修复的版本（否则偶发
+> `unexpected end of stream` / `ERR_CONTENT_LENGTH_MISMATCH`）。部署：`node tools/deploy-relay.mjs`。
+
+### 5.2 局域网直连（App 自动启用）
+
+手机与电脑在同一个局域网时，Android App（1.2.0 起）会自动检测并**直连电脑**，
+不再绕公网 relay；探测失败/离开局域网时自动回到公网链路，无需任何手动配置。
+
+```
+手机 ──HTTPS(自签证书, App 按指纹锁定)──► tunnel 局域网边缘 :43220 ──HTTP──► DSH 127.0.0.1:43120
+```
+
+工作方式：
+
+1. **电脑端**：tunnel（run 模式）在本机起一个 HTTPS 反向代理（`DSH2PHONE_LAN_PORT`，
+   自签证书持久化在 `tunnel/state/`），转发行为与 nginx 一致（Host 固定 `127.0.0.1:43120`、
+   剥离 Origin），并把 `{port, 证书指纹, 私网 IP 列表}` 通过控制面 `lan.announce` 告知 relay。
+2. **relay**：`GET /dsh-lan`（公网 URL `/dsh/dsh-lan`）在**设备门禁之后**把通告 JSON 化返回；
+   只有白名单内的设备拿得到电脑的局域网地址。tunnel 断开即清空通告。
+3. **App**：进入 DSH 前查询 `/dsh/dsh-lan` → 逐个候选地址做**指纹锁定**的探活
+   （`/dsh2phone-lan-hello`）→ 命中即用直连地址加载 DSH；失败自动回落公网并在会话内提示。
+   deny/allow/remove/panic 通过 relay 的白名单广播实时同步到局域网边缘（deny 后直连也 403）。
+
+约束与注意：
+
+- 直连入口的根就是 DSH 根（没有 `/dsh/` 前缀），App 内部已处理路径差异与下载改写。
+- 首次启动 tunnel 会在 `tunnel/state/` 生成自签证书（已 gitignore）；指纹经 relay 转介，App 端锁定，
+  **局域网内的中间人无法伪造电脑身份**；指纹不匹配时 App 立即回落公网。
+- Windows 防火墙可能首次询问是否允许 Node 监听专用网络 —— 选“允许”（或
+  `netsh advfirewall firewall add rule name="dsh2phone lan" dir=in action=allow protocol=TCP localport=43220`）。
+- 直连流量不经过 relay，所以插件设备列表的“最后在线”只反映公网访问。
+- 本地验证：`node tools/lan-direct-check.mjs`（本地 relay + 假 DSH + 真 tunnel 全链路）。
+- 兼容性：旧 relay / 旧 tunnel 没有通告时，`/dsh-lan` 返回 `{"lan":null}` 或 404，App 自动走公网，互不影响。
+
 ### 插件里的「设置」标签
 
 弹窗有三个标签：**配对 / 设备管理 / 设置**。
@@ -131,6 +183,8 @@ CLI 备用：`node tunnel/src/tunnel.mjs pair`（二维码打在终端 + Y/n 确
 | `UPSTREAM_HOST` / `UPSTREAM_PORT` | 本机 DSH Web 服务，默认 `127.0.0.1:43120` |
 | `DSH_AUTHORITY` | DSH 看到的 Host 头，也是铸造 cookie 的 authority，**保持 `127.0.0.1:43120`** |
 | `DSH2PHONE_TTL_DAYS` | 铸造的 DSH cookie 有效期，默认 30 天 |
+| `DSH2PHONE_LAN_EDGE` | 局域网直连边缘开关，默认 `1`（`0` 关闭；详见下文“局域网直连”） |
+| `DSH2PHONE_LAN_PORT` | 局域网直连边缘监听端口，默认 `43220` |
 | `DSH_CREDENTIALS_FILE` | 留空 = `~/.dsh/.credentials.yaml`（只读其中的 browser-session secret） |
 | `DSH_APP_DIR` | DSH Desktop 安装目录（插件从这里的 `@deepseek-ai/*` 解析原生类） |
 | `DSH2PHONE_HOME` / `DSH2PHONE_KEY_FILE` | 本机路径；`DSH2PHONE_KEY_FILE` 为空时用 `DSH_TUNNEL_KEY` |
@@ -165,6 +219,9 @@ node tunnel/src/tunnel.mjs deny <id>   # 拉黑 / allow / remove / panic
 | `tools/gate-repro.mjs` | 门禁逻辑离线复现（真密钥 + 假隧道） | `.env` |
 | `tools/relay-dedupe-check.mjs` | 配对去重（本地 relay） | 无 |
 | `tools/relay-pages-theme-check.mjs` | relay 403/503/入口页深色浅色 | 无 |
+| `tools/mobile-e2e.mjs` | Android App：深链 → 原生配对 → WebView 进入 `/dsh/` | adb 设备/模拟器 |
+| `tools/mobile-back-check.mjs` | Android 返回键：页面浮层关闭逻辑（提取 Java 里的 JS + DOM 夹具） | 无 |
+| `tools/deploy-relay.mjs` | relay 源码上传 + md5 校验 + 重建 + healthz | `.env` + SSH |
 | `tools/gen-cert.mjs` | 生成本地自签证书（`deploy/tls/`） | 无 |
 | `tools/plugin-host-identity-check.mjs` | 插件 host 用 DSH 原生 `@deepseek-ai/*` 加载 | DSH 已安装 |
 | `tools/plugin-gui-check.mjs` | 账号菜单入口 / 二维码 / 设备页 | DSH 运行 + Edge |
@@ -204,7 +261,7 @@ secret   = ~/.dsh/.credentials.yaml 中 client-connection/browser-session 的 pa
 ```powershell
 node tools/version.mjs bump patch --note "修复 xxx"   # 改两处版本号 + 在 CHANGELOG 顶部插入条目
 node tools/version-check.mjs                        # 自检（版本已升 / 条目存在 / 无 TODO 占位）
-git tag v1.1.1 && git push origin v1.1.1             # 可选：打 tag
+git tag v1.3.0 && git push origin v1.3.0             # 可选：打 tag
 ```
 
 升级幅度怎么选：
@@ -237,7 +294,9 @@ git tag v1.1.1 && git push origin v1.1.1             # 可选：打 tag
 | `pair.start` 超时 | `RELAY_URL` 是否可达（SNI 被重置时见 `docs/ip-emergency-plan.md`） |
 | 二维码是旧域名 | 改 `.env` 后要重装插件并禁用/启用一次（host 在进程内缓存配置） |
 | 扫码后重复新增设备 | 正常应去重；检查手机是否换了浏览器/UA |
-| 443 证书不匹配（IP 直连） | 要么签 IP 证书，要么临时 `DSH2PHONE_ALLOW_INVALID_CERT=1` |
+| App 内配对成功后 WebView 报网络错误 | relay 是否包含响应截断修复；`node tools/deploy-relay.mjs --check` 看 md5 |
+| App 扫码没反应 / 相机权限被拒 | 系统设置里给 `tech.xiaoniu.dsh2phone` 开相机权限 |
+| 443 证书不匹配（IP 直连） | 要么签 IP 证书，要么临时 `DSH2PHONE_ALLOW_INVALID_CERT=1`；App 内可在设置页显式信任该主机 |
 
 ## 目录
 
@@ -245,6 +304,7 @@ git tag v1.1.1 && git push origin v1.1.1             # 可选：打 tag
 relay/            src/relay.mjs, Dockerfile
 tunnel/           src/tunnel.mjs, src/dsh-cookie.mjs, *.cmd, autostart.vbs.example
 dsh2phone-dsh-plugin/  host.js, client.js, relay-admin.js, dsh-cookie.js, cordis.patch.yml
+mobile/           Android 客户端（android/ 工程 + README）
 shared/env.mjs    .env 加载器（唯一配置入口）
 deploy/           nginx/*.location, server/docker-compose.yml, tls 自签脚本, prefix-test.mjs
 docs/             HANDOFF.md, ip-emergency-plan.md, ip-feasibility.md, proposal.md, *.png
