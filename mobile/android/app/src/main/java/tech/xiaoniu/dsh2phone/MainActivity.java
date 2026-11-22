@@ -53,7 +53,10 @@ public final class MainActivity extends AppCompatActivity {
     private TextView pairedMeta;
     private TextView homeTitle;
     private TextView homeSubtitle;
+    private TextView pairedBadge;
     private MaterialButton scanButton;
+    private View manualButton;
+    private View stepsCard;
 
     private final ExecutorService probeExecutor = Executors.newSingleThreadExecutor();
     private boolean probeRunning;
@@ -79,7 +82,10 @@ public final class MainActivity extends AppCompatActivity {
         pairedMeta = findViewById(R.id.pairedMeta);
         homeTitle = findViewById(R.id.homeTitle);
         homeSubtitle = findViewById(R.id.homeSubtitle);
+        pairedBadge = findViewById(R.id.pairedBadge);
         scanButton = findViewById(R.id.scanButton);
+        manualButton = findViewById(R.id.manualButton);
+        stepsCard = findViewById(R.id.stepsCard);
 
         scanner = registerForActivityResult(new ScanContract(), result -> {
             if (result.getContents() != null && !result.getContents().isEmpty()) {
@@ -179,12 +185,21 @@ public final class MainActivity extends AppCompatActivity {
     private void render() {
         if (pairing == null) {
             pairedCard.setVisibility(View.GONE);
+            pairedBadge.setVisibility(View.GONE);
+            scanButton.setVisibility(View.VISIBLE);
+            manualButton.setVisibility(View.VISIBLE);
+            stepsCard.setVisibility(View.VISIBLE);
             homeTitle.setText(R.string.home_title);
             homeSubtitle.setText(R.string.home_subtitle);
             scanButton.setText(R.string.scan_button);
             return;
         }
         pairedCard.setVisibility(View.VISIBLE);
+        pairedBadge.setVisibility(View.VISIBLE);
+        // 已配对时主操作是“进入 DSH”，重新配对放进卡片里的文字操作，避免两个主按钮打架。
+        scanButton.setVisibility(View.GONE);
+        manualButton.setVisibility(View.GONE);
+        stepsCard.setVisibility(View.GONE);
         homeTitle.setText(R.string.home_paired_title);
         homeSubtitle.setText(R.string.home_paired_subtitle);
         scanButton.setText(R.string.rescan_button);
@@ -408,6 +423,7 @@ public final class MainActivity extends AppCompatActivity {
         dot.setColor(color);
         statusDot.setBackground(dot);
         statusText.setText(text);
+        statusText.setTextColor(color);
     }
 
     private String messageFor(PairUrl.Error error) {

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/root"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/app_background"
@@ -22,25 +22,31 @@
         android:layout_weight="1"
         android:gravity="center"
         android:orientation="vertical"
-        android:paddingStart="32dp"
-        android:paddingEnd="32dp"
+        android:paddingStart="28dp"
+        android:paddingEnd="28dp"
         android:paddingBottom="32dp">
 
         <FrameLayout
-            android:layout_width="104dp"
-            android:layout_height="104dp">
+            android:layout_width="132dp"
+            android:layout_height="132dp">
+
+            <ImageView
+                android:layout_width="132dp"
+                android:layout_height="132dp"
+                android:background="@drawable/bg_icon_halo"
+                android:contentDescription="@null" />
 
             <ProgressBar
                 android:id="@+id/progress"
-                android:layout_width="96dp"
-                android:layout_height="96dp"
+                android:layout_width="104dp"
+                android:layout_height="104dp"
                 android:layout_gravity="center"
                 android:indeterminateTint="@color/brand" />
 
             <ImageView
                 android:id="@+id/stateIcon"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
                 android:layout_gravity="center"
                 android:contentDescription="@null"
                 android:src="@drawable/ic_link" />
@@ -50,32 +56,33 @@
             android:id="@+id/stateTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
+            android:layout_marginTop="26dp"
             android:gravity="center"
+            android:letterSpacing="-0.01"
             android:text="@string/pair_connecting"
             android:textColor="@color/text_primary"
-            android:textSize="22sp"
+            android:textSize="24sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/stateMessage"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="10dp"
             android:gravity="center"
             android:lineSpacingExtra="4dp"
             android:textColor="@color/text_secondary"
-            android:textSize="15sp" />
+            android:textSize="14sp" />
 
         <TextView
             android:id="@+id/stateHint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:gravity="center"
             android:lineSpacingExtra="3dp"
             android:textColor="@color/text_tertiary"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:visibility="gone" />
 
         <TextView
@@ -83,9 +90,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:background="@color/warning_banner_background"
+            android:background="@drawable/bg_warning_chip"
             android:gravity="center"
-            android:padding="10dp"
+            android:lineSpacingExtra="2dp"
+            android:padding="12dp"
             android:text="@string/pair_insecure_warning"
             android:textColor="@color/warning_banner_text"
             android:textSize="12sp"
@@ -93,27 +101,26 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/primaryButton"
+            style="@style/Widget.Dsh2Phone.PrimaryButton"
             android:layout_width="match_parent"
-            android:layout_height="52dp"
+            android:layout_height="wrap_content"
             android:layout_marginTop="28dp"
-            android:text="@string/action_cancel"
-            app:cornerRadius="14dp" />
+            android:text="@string/action_cancel" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/secondaryButton"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+            style="@style/Widget.Dsh2Phone.SecondaryButton"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
             android:text="@string/action_rescan"
-            android:visibility="gone"
-            app:cornerRadius="14dp" />
+            android:visibility="gone" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/tertiaryButton"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Dsh2Phone.TextAction"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:text="@string/action_cancel"
             android:visibility="gone" />

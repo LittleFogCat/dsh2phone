@@ -1,26 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand">#2563EB</color>
+    <!-- 品牌与强调色：克制的蓝，浅色主题里只用在关键动作和状态上 -->
+    <color name="brand">#3B6BFF</color>
+    <color name="brand_deep">#1E3FBF</color>
     <color name="on_brand">#FFFFFF</color>
-    <color name="app_background">#F5F6F8</color>
+    <color name="brand_soft">#E9EFFF</color>
+
+    <!-- 表面与文字：中性灰阶，减少边框，靠留白和层级区分 -->
+    <color name="app_background">#F6F7F9</color>
     <color name="card_background">#FFFFFF</color>
-    <color name="card_stroke">#E2E5EA</color>
-    <color name="text_primary">#1B1D21</color>
-    <color name="text_secondary">#5B6169</color>
-    <color name="text_tertiary">#8A9099</color>
+    <color name="surface_muted">#F1F3F7</color>
+    <color name="card_stroke">#E8EBF0</color>
+    <color name="divider">#EEF0F4</color>
+    <color name="text_primary">#101318</color>
+    <color name="text_secondary">#5C6472</color>
+    <color name="text_tertiary">#8D95A3</color>
 
-    <color name="status_online">#16A34A</color>
+    <!-- 首屏渐变 -->
+    <color name="hero_start">#EAF1FF</color>
+    <color name="hero_end">#F9FBFF</color>
+
+    <color name="status_online">#12A150</color>
     <color name="status_offline">#C2410C</color>
-    <color name="status_unknown">#9CA3AF</color>
+    <color name="status_unknown">#9AA1AD</color>
+    <color name="success_soft">#E7F7EE</color>
+    <color name="danger_soft">#FDECEC</color>
 
-    <color name="info_banner_background">#EEF4FF</color>
+    <color name="info_banner_background">#EAF0FF</color>
     <color name="info_banner_text">#1D4ED8</color>
-    <color name="warning_banner_background">#FFF7E6</color>
+    <color name="warning_banner_background">#FFF6E5</color>
     <color name="warning_banner_text">#8A4B00</color>
     <color name="error_banner_background">#FEF2F2</color>
     <color name="error_banner_text">#B91C1C</color>
 
-    <color name="switch_track_on">#332563EB</color>
+    <color name="switch_track_on">#4D3B6BFF</color>
     <color name="ic_launcher_background">#EAF3FF</color>
     <color name="white">#FFFFFF</color>
 </resources>

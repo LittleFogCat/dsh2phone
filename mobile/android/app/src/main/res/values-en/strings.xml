@@ -2,18 +2,20 @@
 <resources>
     <string name="app_name">MobiDSH</string>
 
-    <string name="home_title">Connect your DSH</string>
-    <string name="home_subtitle">Open DSH Desktop on your computer, scan the “Pair phone” QR code, and enter DSH right inside this app without browser restrictions.</string>
-    <string name="home_paired_title">Connected to DSH</string>
-    <string name="home_paired_subtitle">Open DSH below, or scan a new QR code to replace this pairing.</string>
-    <string name="scan_button">Scan QR code to pair</string>
-    <string name="rescan_button">Scan again to replace pairing</string>
+    <string name="home_title">Your DSH, in your pocket</string>
+    <string name="home_subtitle">Open DSH Desktop, scan the pairing QR code, and continue your sessions on your phone.</string>
+    <string name="home_paired_title">Your DSH, in your pocket</string>
+    <string name="home_paired_subtitle">When the computer is online, pick up where you left off.</string>
+    <string name="home_eyebrow">MOBIDSH · MOBILE</string>
+    <string name="home_paired_badge">Paired</string>
+    <string name="scan_button">Scan QR code</string>
+    <string name="rescan_button">Scan again</string>
     <string name="manual_button">Paste pairing link</string>
 
-    <string name="steps_title">How to pair</string>
-    <string name="step_1">1. Open DSH Desktop on your computer</string>
-    <string name="step_2">2. Open the bottom-left account menu → “Pair phone”</string>
-    <string name="step_3">3. Scan the QR code with this app</string>
+    <string name="steps_title">Get started</string>
+    <string name="step_1">Open DSH Desktop on your computer</string>
+    <string name="step_2">Tap the account menu at the bottom left → “Pair phone”</string>
+    <string name="step_3">Scan the QR code with this app</string>
 
     <string name="security_title">Security</string>
     <string name="security_body">The pairing code is sent only to the server you scanned, and a new device must be approved on the computer. This app contains no analytics or ads.</string>

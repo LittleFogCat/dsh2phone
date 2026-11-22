@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -56,8 +57,13 @@ public final class SettingsActivity extends AppCompatActivity {
             device.setText("");
             origin.setText("—");
             allowBadCertSwitch.setEnabled(false);
-            findViewById(R.id.settingsRepair).setEnabled(false);
-            findViewById(R.id.settingsUnpair).setEnabled(false);
+            allowBadCertSwitch.setAlpha(0.45f);
+            View repair = findViewById(R.id.settingsRepair);
+            View unpair = findViewById(R.id.settingsUnpair);
+            repair.setEnabled(false);
+            repair.setAlpha(0.45f);
+            unpair.setEnabled(false);
+            unpair.setAlpha(0.45f);
         } else {
             host.setText(pairing.origin);
             device.setText(getString(R.string.paired_device_format, pairing.deviceName) + "\n"
@@ -76,6 +82,7 @@ public final class SettingsActivity extends AppCompatActivity {
 
         lanDirectSwitch.setChecked(AppPrefs.lanDirectEnabled(this));
         lanDirectSwitch.setEnabled(pairing != null);
+        lanDirectSwitch.setAlpha(pairing == null ? 0.45f : 1f);
         lanDirectSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             AppPrefs.setLanDirectEnabled(this, isChecked);
             if (pairing != null) {

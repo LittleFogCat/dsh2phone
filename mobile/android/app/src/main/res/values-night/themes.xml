@@ -3,11 +3,14 @@
     <style name="Theme.Dsh2Phone" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/brand</item>
         <item name="colorOnPrimary">@color/on_brand</item>
-        <item name="colorPrimaryContainer">@color/brand</item>
-        <item name="colorOnPrimaryContainer">@color/on_brand</item>
+        <item name="colorPrimaryContainer">@color/brand_soft</item>
+        <item name="colorOnPrimaryContainer">@color/brand_deep</item>
+        <item name="colorSecondary">@color/brand</item>
+        <item name="colorOnSecondary">@color/on_brand</item>
         <item name="android:colorBackground">@color/app_background</item>
         <item name="colorSurface">@color/card_background</item>
         <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorSurfaceVariant">@color/surface_muted</item>
         <item name="colorOnSurfaceVariant">@color/text_secondary</item>
         <item name="colorOutline">@color/card_stroke</item>
         <item name="android:statusBarColor">@color/app_background</item>

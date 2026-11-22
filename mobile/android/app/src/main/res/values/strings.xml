@@ -2,18 +2,20 @@
 <resources>
     <string name="app_name">MobiDSH</string>
 
-    <string name="home_title">连接你的 DSH</string>
-    <string name="home_subtitle">在电脑上打开 DSH Desktop，扫描“配对手机”二维码，即可在 App 内直接进入 DSH，不再受浏览器限制。</string>
-    <string name="home_paired_title">已连接到 DSH</string>
-    <string name="home_paired_subtitle">从下方一键进入，或重新扫描二维码替换当前配对。</string>
-    <string name="scan_button">扫描二维码配对</string>
-    <string name="rescan_button">重新扫描并替换配对</string>
+    <string name="home_title">随时回到你的 DSH</string>
+    <string name="home_subtitle">在电脑上打开 DSH Desktop，扫码配对后即可在手机上继续会话。</string>
+    <string name="home_paired_title">随时回到你的 DSH</string>
+    <string name="home_paired_subtitle">电脑端在线时，一键继续上次的会话。</string>
+    <string name="home_eyebrow">MOBIDSH · 手机端</string>
+    <string name="home_paired_badge">已配对</string>
+    <string name="scan_button">扫描二维码</string>
+    <string name="rescan_button">重新扫描</string>
     <string name="manual_button">粘贴配对链接</string>
 
-    <string name="steps_title">如何配对</string>
-    <string name="step_1">1. 在电脑上打开 DSH Desktop</string>
-    <string name="step_2">2. 点击左下角账号菜单 → “配对手机”</string>
-    <string name="step_3">3. 用本 App 扫描弹出的二维码</string>
+    <string name="steps_title">如何开始</string>
+    <string name="step_1">在电脑上打开 DSH Desktop</string>
+    <string name="step_2">点击左下角账号菜单 → “配对手机”</string>
+    <string name="step_3">用本 App 扫描弹出的二维码</string>
 
     <string name="security_title">安全说明</string>
     <string name="security_body">配对码只会发送给你扫描的服务器；新设备必须由你在电脑上确认。本 App 不包含统计或广告组件。</string>
