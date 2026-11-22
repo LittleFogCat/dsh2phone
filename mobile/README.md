@@ -23,7 +23,7 @@
 - **局域网直连开关**（1.2.2 起）：设置页可以关闭「局域网直连」；关闭后即使手机和电脑在同一局域网也强制走公网，便于验证公网链路或对比两条链路的性能；
 - 可以显式信任某个主机的证书（仅用于“IP 直连但证书签给域名”的应急场景，默认关闭）。
 
-包名：`tech.xiaoniu.dsh2phone`；应用名：`MobiDSH`（中文 `移鲸`）；版本：`1.3.0`（versionCode 13）。
+包名：`tech.xiaoniu.dsh2phone`；应用名：`MobiDSH`（中文 `移鲸`）；版本：`1.3.1`（versionCode 14）。
 
 ## 和现有链路的关系
 
@@ -137,9 +137,9 @@ manifest 格式：
 
 ```json
 {
-  "versionCode": 13,
-  "versionName": "1.3.0",
-  "apkUrl": "dsh2phone-1.3.0-release.apk",
+  "versionCode": 14,
+  "versionName": "1.3.1",
+  "apkUrl": "dsh2phone-1.3.1-release.apk",
   "sha256": "<APK SHA-256>",
   "size": 2387029,
   "notes": "本次更新说明"

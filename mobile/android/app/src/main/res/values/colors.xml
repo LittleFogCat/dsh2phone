@@ -34,6 +34,8 @@
     <color name="error_banner_text">#B91C1C</color>
 
     <color name="switch_track_on">#4D3B6BFF</color>
+    <color name="switch_thumb_disabled">#C7CDD6</color>
+    <color name="switch_track_disabled">#E4E7EC</color>
     <color name="ic_launcher_background">#EAF3FF</color>
     <color name="white">#FFFFFF</color>
 </resources>

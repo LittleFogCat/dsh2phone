@@ -57,7 +57,6 @@ public final class SettingsActivity extends AppCompatActivity {
             device.setText("");
             origin.setText("—");
             allowBadCertSwitch.setEnabled(false);
-            allowBadCertSwitch.setAlpha(0.45f);
             View repair = findViewById(R.id.settingsRepair);
             View unpair = findViewById(R.id.settingsUnpair);
             repair.setEnabled(false);
@@ -82,7 +81,6 @@ public final class SettingsActivity extends AppCompatActivity {
 
         lanDirectSwitch.setChecked(AppPrefs.lanDirectEnabled(this));
         lanDirectSwitch.setEnabled(pairing != null);
-        lanDirectSwitch.setAlpha(pairing == null ? 0.45f : 1f);
         lanDirectSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             AppPrefs.setLanDirectEnabled(this, isChecked);
             if (pairing != null) {
