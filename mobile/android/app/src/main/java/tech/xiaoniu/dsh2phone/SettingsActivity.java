@@ -21,6 +21,7 @@ public final class SettingsActivity extends AppCompatActivity {
     private PairStore store;
     private Pairing pairing;
     private MaterialSwitch allowBadCertSwitch;
+    private MaterialSwitch lanDirectSwitch;
     private TextView host;
     private TextView device;
     private boolean updatingSwitch;
@@ -39,6 +40,7 @@ public final class SettingsActivity extends AppCompatActivity {
         host = findViewById(R.id.settingsHost);
         device = findViewById(R.id.settingsDevice);
         allowBadCertSwitch = findViewById(R.id.allowBadCertSwitch);
+        lanDirectSwitch = findViewById(R.id.lanDirectSwitch);
         TextView version = findViewById(R.id.settingsVersion);
         TextView build = findViewById(R.id.settingsBuild);
         TextView ua = findViewById(R.id.settingsUa);
@@ -71,6 +73,15 @@ public final class SettingsActivity extends AppCompatActivity {
                 else store.setAllowBadCert(false);
             });
         }
+
+        lanDirectSwitch.setChecked(AppPrefs.lanDirectEnabled(this));
+        lanDirectSwitch.setEnabled(pairing != null);
+        lanDirectSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            AppPrefs.setLanDirectEnabled(this, isChecked);
+            if (pairing != null) {
+                Toast.makeText(this, R.string.settings_lan_direct_changed, Toast.LENGTH_SHORT).show();
+            }
+        });
 
         findViewById(R.id.settingsRepair).setOnClickListener(v -> {
             Intent intent = new Intent(this, MainActivity.class);

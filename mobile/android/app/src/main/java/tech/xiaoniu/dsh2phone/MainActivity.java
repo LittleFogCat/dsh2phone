@@ -359,7 +359,7 @@ public final class MainActivity extends AppCompatActivity {
             PairProbe.State state = PairProbe.check(current, 6000);
             // 在线时顺带探测局域网直连（结果写入缓存，进入 DSH 时可秒命中）。
             LanDirect.Direct direct = null;
-            if (state == PairProbe.State.ONLINE) {
+            if (state == PairProbe.State.ONLINE && AppPrefs.lanDirectEnabled(MainActivity.this)) {
                 try {
                     direct = LanDirect.resolve(current, store.lanOrigin(), store.lanFp(), 500, 800, 2500);
                     if (direct != null) store.saveLanDirect(direct.origin, direct.fp);

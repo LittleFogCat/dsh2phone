@@ -197,6 +197,8 @@ public final class WebAppActivity extends AppCompatActivity {
     private String directOrigin;
     private String directFp;
     private boolean lanFallback;
+    /** 本次加载是否允许局域网直连；设置页切换后由 onResume 处理。 */
+    private boolean lanDirectEnabledAtLoad;
     private boolean sslDialogShown;
     private boolean externalDialogShown;
     private boolean userTouchedPage;
@@ -317,6 +319,7 @@ public final class WebAppActivity extends AppCompatActivity {
         activeOrigin = pairing.origin;
         injectCookies();
         entryUrl = pairing.entryUrl();
+        lanDirectEnabledAtLoad = AppPrefs.lanDirectEnabled(this);
         // 先做一次直连决策再进 /dsh/：电脑端在同一局域网时直连（省掉公网绕行），
         // 否则照旧走公网。二次进入复用 Activity，不重复决策。
         resolveDirectEntry();
@@ -328,6 +331,17 @@ public final class WebAppActivity extends AppCompatActivity {
      */
     private void resolveDirectEntry() {
         progress.setVisibility(View.VISIBLE);
+        if (!lanDirectEnabledAtLoad) {
+            // 设置里关闭「局域网直连」：即使同网也强制走公网，用于测试公网链路。
+            activeOrigin = pairing.origin;
+            entryUrl = pairing.entryUrl();
+            injectCookies();
+            if (isDebugBuild()) {
+                android.util.Log.d("Dsh2PhoneWeb", "lan direct disabled by setting");
+            }
+            webView.loadUrl(entryUrl);
+            return;
+        }
         final Pairing current = pairing;
         final String cachedOrigin = store.lanOrigin();
         final String cachedFp = store.lanFp();
@@ -508,11 +522,34 @@ public final class WebAppActivity extends AppCompatActivity {
             return;
         }
         pairing = latest;
+        boolean wantDirect = AppPrefs.lanDirectEnabled(this);
+        if (wantDirect != lanDirectEnabledAtLoad) {
+            lanDirectEnabledAtLoad = wantDirect;
+            applyLanDirectSetting(wantDirect);
+        }
         if (webView != null) {
             webView.onResume();
             injectPageHooks(webView);
             // 某些 SystemUI 在 activity resume 时会重置状态栏，重新按当前页面色上色。
             if (lastBarColor != Color.TRANSPARENT) applyBarColors(lastBarColor);
+        }
+    }
+
+    /** 设置页切换「局域网直连」后，按新值切到直连或公网（无需杀进程）。 */
+    private void applyLanDirectSetting(boolean enabled) {
+        if (webView == null || pairing == null) return;
+        if (!enabled && directOrigin != null) {
+            // 正在直连：立刻切回公网，避免继续复用已建立的直连会话。
+            directOrigin = null;
+            directFp = null;
+            lanFallback = false;
+            activeOrigin = pairing.origin;
+            entryUrl = pairing.entryUrl();
+            injectCookies();
+            webView.loadUrl(entryUrl);
+        } else if (enabled && directOrigin == null) {
+            // 从公网切回自动：重新做一次直连决策，命中则直连，否则仍走公网。
+            resolveDirectEntry();
         }
     }
 

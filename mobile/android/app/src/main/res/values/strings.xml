@@ -94,6 +94,10 @@
 
     <string name="settings_title">设置</string>
     <string name="settings_pairing_section">当前配对</string>
+    <string name="settings_connection_section">连接</string>
+    <string name="settings_lan_direct">局域网直连</string>
+    <string name="settings_lan_direct_desc">同一局域网时优先直连电脑，绕过公网中继。关闭后即使在同一局域网也走公网，便于测试。</string>
+    <string name="settings_lan_direct_changed">已保存；重新进入 DSH 生效</string>
     <string name="settings_security_section">安全</string>
     <string name="settings_about_section">关于</string>
     <string name="settings_no_pairing">尚未配对。请回到主页扫描二维码。</string>

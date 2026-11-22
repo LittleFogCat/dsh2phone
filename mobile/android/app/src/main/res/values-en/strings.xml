@@ -94,6 +94,10 @@
 
     <string name="settings_title">Settings</string>
     <string name="settings_pairing_section">Current pairing</string>
+    <string name="settings_connection_section">Connection</string>
+    <string name="settings_lan_direct">Direct LAN connection</string>
+    <string name="settings_lan_direct_desc">Prefer a direct connection to the computer when on the same LAN, bypassing the public relay. Turn it off to force the public relay even on the same LAN (useful for testing).</string>
+    <string name="settings_lan_direct_changed">Saved; reopen DSH to apply</string>
     <string name="settings_security_section">Security</string>
     <string name="settings_about_section">About</string>
     <string name="settings_no_pairing">Not paired yet. Go back and scan a QR code.</string>
