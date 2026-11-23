@@ -932,7 +932,7 @@ public final class WebAppActivity extends AppCompatActivity {
         String scheme = uri.getScheme();
         if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) return null;
         String path = uri.getPath();
-        if (path == null || !isCacheablePath(path)) return null;
+        if (path == null || !isCacheablePath(path, uri.toString())) return null;
         if (!sameOrigin(uri)) return null;
 
         String url = uri.toString();
@@ -951,9 +951,12 @@ public final class WebAppActivity extends AppCompatActivity {
         return fetchStatic(url, path);
     }
 
-    private static boolean isCacheablePath(String path) {
-        return path.contains("/assets/")
-                || path.contains("/plugins/??")
+    private static boolean isCacheablePath(String path, String fullUrl) {
+        // 注意：DSH 的插件 bundle 是 /plugins/??pkg@ver/client.js&rev=...
+        // 第一个 ? 会被 Uri 当成 query 分隔符，getPath() 只剩 /plugins/，
+        // 所以这里必须用完整 URL 判断 "??"。
+        return fullUrl.contains("/assets/")
+                || fullUrl.contains("/plugins/??")
                 || path.endsWith("/favicon.svg")
                 || path.endsWith("/manifest.webmanifest")
                 || path.endsWith("/apple-touch-icon.png");

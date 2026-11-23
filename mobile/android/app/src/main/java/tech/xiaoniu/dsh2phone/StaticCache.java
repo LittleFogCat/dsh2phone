@@ -127,6 +127,11 @@ final class StaticCache {
         return total;
     }
 
+    synchronized int count() {
+        File[] files = dir.listFiles((d, name) -> name.endsWith(".bin"));
+        return files == null ? 0 : files.length;
+    }
+
     private void trim() {
         File[] files = dir.listFiles((d, name) -> name.endsWith(".bin"));
         if (files == null || files.length == 0) return;

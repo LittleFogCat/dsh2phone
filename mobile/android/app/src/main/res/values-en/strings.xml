@@ -161,6 +161,7 @@
     <string name="settings_check_update">Check for updates</string>
     <string name="settings_clear_cache">Clear page cache</string>
     <string name="settings_cache_cleared">Page cache cleared</string>
+    <string name="settings_cache_size">Page cache: %1$s · %2$d files</string>
 
     <string name="about_title">About MobiDSH</string>
     <string name="about_body">MobiDSH (移鲸) is the Android client for dsh2phone. It scans the QR code in-app, pairs natively, then opens DSH in a controlled WebView. It reuses the pairing QR code and relay device allowlist, and does not change the server-side security model.\n\nIt is not a replacement for DSH Desktop and does not keep a background connection.\n\nIcon: chibi \"Dafeiyu / Whale Girl\" by YunYueSama, source https://github.com/YunYueSama/codex-deepseek-pet , used under the Dafeiyu Attribution License 1.0; cropped and scaled for this app.</string>

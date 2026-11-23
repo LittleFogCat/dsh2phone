@@ -25,6 +25,7 @@ public final class SettingsActivity extends AppCompatActivity {
     private MaterialSwitch lanDirectSwitch;
     private TextView host;
     private TextView device;
+    private TextView cacheSize;
     private boolean updatingSwitch;
 
     @Override
@@ -40,6 +41,7 @@ public final class SettingsActivity extends AppCompatActivity {
 
         host = findViewById(R.id.settingsHost);
         device = findViewById(R.id.settingsDevice);
+        cacheSize = findViewById(R.id.settingsCacheSize);
         allowBadCertSwitch = findViewById(R.id.allowBadCertSwitch);
         lanDirectSwitch = findViewById(R.id.lanDirectSwitch);
         TextView version = findViewById(R.id.settingsVersion);
@@ -101,8 +103,29 @@ public final class SettingsActivity extends AppCompatActivity {
                 UpdateManager.check(this, store.load(), true));
         findViewById(R.id.clearCache).setOnClickListener(v -> {
             new StaticCache(this).clear();
+            updateCacheSize();
             Toast.makeText(this, R.string.settings_cache_cleared, Toast.LENGTH_SHORT).show();
         });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        updateCacheSize();
+    }
+
+    private void updateCacheSize() {
+        if (cacheSize == null) return;
+        StaticCache cache = new StaticCache(this);
+        cacheSize.setText(getString(R.string.settings_cache_size,
+                formatBytes(cache.sizeBytes()), cache.count()));
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024 * 1024) {
+            return String.format(java.util.Locale.US, "%.0f KB", bytes / 1024.0);
+        }
+        return String.format(java.util.Locale.US, "%.1f MB", bytes / 1048576.0);
     }
 
     private void confirmAllowBadCert() {
@@ -156,12 +179,14 @@ public final class SettingsActivity extends AppCompatActivity {
     }
 
     private void copyDiagnostics() {
+        StaticCache cache = new StaticCache(this);
         String text = "app=" + getPackageName()
                 + "\nversion=" + versionName()
                 + "\nbuild=" + (isDebugBuild() ? "debug" : "release")
                 + "\nua=" + AppIdentity.userAgent(this)
                 + "\norigin=" + (pairing == null ? "—" : pairing.origin)
-                + "\ndevice=" + (pairing == null ? "—" : pairing.deviceName);
+                + "\ndevice=" + (pairing == null ? "—" : pairing.deviceName)
+                + "\ncache=" + formatBytes(cache.sizeBytes()) + "/" + cache.count();
         ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         if (clipboard != null) {
             clipboard.setPrimaryClip(ClipData.newPlainText("dsh2phone diagnostics", text));

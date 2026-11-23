@@ -161,6 +161,7 @@
     <string name="settings_check_update">检查更新</string>
     <string name="settings_clear_cache">清除页面缓存</string>
     <string name="settings_cache_cleared">页面缓存已清除</string>
+    <string name="settings_cache_size">页面缓存：%1$s · %2$d 个文件</string>
 
     <string name="about_title">关于 移鲸</string>
     <string name="about_body">移鲸（MobiDSH）是 dsh2phone 的 Android 客户端：在 App 内扫码、原生完成配对，再用受控 WebView 打开 DSH。它复用电脑端生成的配对二维码与 relay 的设备白名单，不改变服务端安全模型。\n\n本 App 不是 DSH Desktop 的替代品，也不会在后台常驻连接。\n\n图标：「大肥鱼／鲸鱼娘」Q 版形象，作者 YunYueSama，来源 https://github.com/YunYueSama/codex-deepseek-pet ，按“大肥鱼项目署名许可 1.0”使用；本 App 对原图做了裁剪与缩放。</string>
