@@ -140,6 +140,8 @@
     <string name="web_download_started">Download started</string>
     <string name="web_download_unsupported">This download type is not supported yet. Open it in a browser.</string>
     <string name="web_loading">Entering DSH…</string>
+    <string name="web_loading_hint">The first load can take a few seconds.</string>
+    <string name="web_loading_slow">The network seems slow. You can wait or retry.</string>
 
     <string name="update_title">New version %1$s available</string>
     <string name="update_message">%1$s\n\nDownload and install now?</string>

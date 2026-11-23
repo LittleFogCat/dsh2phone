@@ -140,6 +140,8 @@
     <string name="web_download_started">已开始下载</string>
     <string name="web_download_unsupported">当前版本暂不支持该下载方式，请用浏览器打开。</string>
     <string name="web_loading">正在进入 DSH…</string>
+    <string name="web_loading_hint">首次打开需要几秒，请稍候</string>
+    <string name="web_loading_slow">网络似乎有点慢，可以再等等或重试</string>
 
     <string name="update_title">发现新版本 %1$s</string>
     <string name="update_message">%1$s\n\n是否下载并安装？</string>

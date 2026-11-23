@@ -147,6 +147,21 @@ public final class WebAppActivity extends AppCompatActivity {
     private MaterialCardView banner;
     private TextView bannerText;
     private MaterialButton bannerAction;
+    private View loadingView;
+    private TextView loadingTitle;
+    private TextView loadingHint;
+    private MaterialButton loadingRetry;
+
+    /** 页面是否已经真正绘制过；用于 onResume 后检查 WebView 是否白屏。 */
+    private boolean pageCommitted;
+    private long blankCheckToken;
+    private long lastBlankReloadAt;
+    private static final long LOADING_TIMEOUT_MS = 10_000;
+    private final Runnable loadingTimeout = () -> {
+        if (loadingView == null || loadingView.getVisibility() != View.VISIBLE) return;
+        loadingHint.setText(R.string.web_loading_slow);
+        loadingRetry.setVisibility(View.VISIBLE);
+    };
 
     /** 正在等页面回话（关浮层），避免连按返回键连续关掉多层。 */
     private boolean backPending;
@@ -234,6 +249,63 @@ public final class WebAppActivity extends AppCompatActivity {
                 android.util.Log.d("Dsh2PhonePerf", phase + " +" + elapsed + "ms " + value));
     }
 
+    /** 页面 commit 之前盖一层品牌加载态：不露白屏，超时后给重试入口。 */
+    private void showLoading() {
+        if (loadingView == null) return;
+        loadingView.setVisibility(View.VISIBLE);
+        loadingTitle.setText(R.string.web_loading);
+        loadingHint.setText(R.string.web_loading_hint);
+        loadingRetry.setVisibility(View.GONE);
+        uiHandler.removeCallbacks(loadingTimeout);
+        uiHandler.postDelayed(loadingTimeout, LOADING_TIMEOUT_MS);
+    }
+
+    private void hideLoading() {
+        if (loadingView == null) return;
+        loadingView.setVisibility(View.GONE);
+        uiHandler.removeCallbacks(loadingTimeout);
+    }
+
+    /**
+     * 从后台回到前台时，WebView 偶尔会保留一个空白 surface（页面还在、API/WS 也正常），
+     * 这里在 resume 后探测一次 body 文本；空的话重载一次。15 秒内最多重载一次，避免循环。
+     */
+    private void checkBlankPage() {
+        if (webView == null) return;
+        final long token = ++blankCheckToken;
+        final boolean[] answered = {false};
+        webView.evaluateJavascript(
+                "(function(){try{var b=document.body;"
+                        + "return (b?b.innerText.trim().length:0)+'|'+(document.readyState||'');"
+                        + "}catch(e){return '0|error';}})()",
+                value -> {
+                    answered[0] = true;
+                    if (token != blankCheckToken || webView == null) return;
+                    String raw = value == null ? "" : value.replace("\"", "");
+                    int length = 0;
+                    try {
+                        length = Integer.parseInt(raw.split("\\|")[0]);
+                    } catch (Exception ignored) {
+                        // 解析失败按空页面处理。
+                    }
+                    if (length < 10) reloadIfBlank();
+                });
+        // renderer 已经卡死时 evaluateJavascript 不会回调，用超时兜底。
+        uiHandler.postDelayed(() -> {
+            if (token == blankCheckToken && !answered[0] && pageCommitted) reloadIfBlank();
+        }, 2500);
+    }
+
+    private void reloadIfBlank() {
+        if (webView == null) return;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - lastBlankReloadAt < 15_000) return;
+        lastBlankReloadAt = now;
+        pageCommitted = false;
+        showLoading();
+        webView.reload();
+    }
+
     private final class NativeBridge {
         @JavascriptInterface
         public void setPageBackground(String color) {
@@ -280,6 +352,14 @@ public final class WebAppActivity extends AppCompatActivity {
         bannerText = findViewById(R.id.bannerText);
         bannerAction = findViewById(R.id.bannerAction);
         webView = findViewById(R.id.webView);
+        loadingView = findViewById(R.id.loadingView);
+        loadingTitle = findViewById(R.id.loadingTitle);
+        loadingHint = findViewById(R.id.loadingHint);
+        loadingRetry = findViewById(R.id.loadingRetry);
+        loadingRetry.setOnClickListener(v -> {
+            showLoading();
+            if (entryUrl != null && webView != null) webView.loadUrl(entryUrl);
+        });
 
         applyInsets();
         applyFallbackBars();
@@ -331,6 +411,7 @@ public final class WebAppActivity extends AppCompatActivity {
      */
     private void resolveDirectEntry() {
         progress.setVisibility(View.VISIBLE);
+        showLoading();
         if (!lanDirectEnabledAtLoad) {
             // 设置里关闭「局域网直连」：即使同网也强制走公网，用于测试公网链路。
             activeOrigin = pairing.origin;
@@ -529,9 +610,13 @@ public final class WebAppActivity extends AppCompatActivity {
         }
         if (webView != null) {
             webView.onResume();
+            webView.resumeTimers();
+            webView.invalidate();
             injectPageHooks(webView);
             // 某些 SystemUI 在 activity resume 时会重置状态栏，重新按当前页面色上色。
             if (lastBarColor != Color.TRANSPARENT) applyBarColors(lastBarColor);
+            // 后台回来偶发空白 surface：探一次 DOM，空了就重载。
+            if (pageCommitted) checkBlankPage();
         }
     }
 
@@ -617,12 +702,16 @@ public final class WebAppActivity extends AppCompatActivity {
                 uiHandler.removeCallbacks(suppressKeyboard);
                 if (entryUrl == null || entryUrl.equals(url)) userTouchedPage = false;
                 applyFallbackBars();
+                pageCommitted = false;
+                showLoading();
                 logPerf("pageStarted");
             }
 
             @Override
             public void onPageCommitVisible(WebView view, String url) {
                 injectPageHooks(view);
+                pageCommitted = true;
+                hideLoading();
                 logPerf("commitVisible");
             }
 
@@ -630,6 +719,8 @@ public final class WebAppActivity extends AppCompatActivity {
             public void onPageFinished(WebView view, String url) {
                 progress.setVisibility(View.GONE);
                 injectPageHooks(view);
+                pageCommitted = true;
+                hideLoading();
                 scheduleKeyboardSuppression();
                 logPerf("pageFinished");
                 uiHandler.postDelayed(() -> logPerf("settled"), 3000);
@@ -653,6 +744,8 @@ public final class WebAppActivity extends AppCompatActivity {
             public void onReceivedHttpError(WebView view, WebResourceRequest request,
                                             android.webkit.WebResourceResponse errorResponse) {
                 if (!request.isForMainFrame()) return;
+                pageCommitted = false;
+                hideLoading();
                 int status = errorResponse.getStatusCode();
                 if (isDebugBuild()) {
                     android.util.Log.d("Dsh2PhoneWeb", "http " + status + " " + request.getUrl());
@@ -669,6 +762,8 @@ public final class WebAppActivity extends AppCompatActivity {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (!request.isForMainFrame()) return;
+                pageCommitted = false;
+                hideLoading();
                 if (isDebugBuild()) {
                     android.util.Log.d("Dsh2PhoneWeb", "error " + request.getUrl()
                             + " code=" + error.getErrorCode() + " desc=" + error.getDescription());
@@ -969,6 +1064,8 @@ public final class WebAppActivity extends AppCompatActivity {
     protected void onDestroy() {
         uiHandler.removeCallbacks(suppressKeyboard);
         uiHandler.removeCallbacks(backTimeout);
+        uiHandler.removeCallbacks(loadingTimeout);
+        blankCheckToken++;
         backPending = false;
         lanExecutor.shutdownNow();
         if (fileCallback != null) {
