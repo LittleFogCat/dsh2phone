@@ -399,7 +399,7 @@ public final class LanDirect {
     }
 
     /** 给连接装上“只信任这张证书”的 SSLSocketFactory；主机名校验由指纹代替。 */
-    private static void pinFingerprint(HttpsURLConnection conn, final String fp) throws Exception {
+    public static void pinFingerprint(HttpsURLConnection conn, final String fp) throws Exception {
         SSLContext context = SSLContext.getInstance("TLS");
         context.init(null, new TrustManager[]{new X509TrustManager() {
             @Override

@@ -99,6 +99,10 @@ public final class SettingsActivity extends AppCompatActivity {
         findViewById(R.id.copyDiagnostics).setOnClickListener(v -> copyDiagnostics());
         findViewById(R.id.checkUpdates).setOnClickListener(v ->
                 UpdateManager.check(this, store.load(), true));
+        findViewById(R.id.clearCache).setOnClickListener(v -> {
+            new StaticCache(this).clear();
+            Toast.makeText(this, R.string.settings_cache_cleared, Toast.LENGTH_SHORT).show();
+        });
     }
 
     private void confirmAllowBadCert() {
@@ -142,6 +146,7 @@ public final class SettingsActivity extends AppCompatActivity {
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.settings_unpair_confirm, (d, w) -> {
                     store.clear();
+                    new StaticCache(SettingsActivity.this).clear();
                     android.webkit.CookieManager.getInstance().removeAllCookies(null);
                     android.webkit.CookieManager.getInstance().flush();
                     setResult(RESULT_OK);

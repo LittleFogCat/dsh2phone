@@ -27,6 +27,7 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -53,11 +54,24 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
+import java.io.ByteArrayInputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.InflaterInputStream;
+
+import javax.net.ssl.HttpsURLConnection;
 
 /**
  * 全屏 WebView：不再渲染原生 Toolbar，页面占满状态栏以下区域；状态栏/导航栏颜色
@@ -151,6 +165,9 @@ public final class WebAppActivity extends AppCompatActivity {
     private TextView loadingTitle;
     private TextView loadingHint;
     private MaterialButton loadingRetry;
+    private StaticCache staticCache;
+    private final Semaphore cacheFetchPermits = new Semaphore(3);
+    private static final int MAX_CACHE_ENTRY_BYTES = 16 * 1024 * 1024;
 
     /** 页面是否已经真正绘制过；用于 onResume 后检查 WebView 是否白屏。 */
     private boolean pageCommitted;
@@ -340,6 +357,7 @@ public final class WebAppActivity extends AppCompatActivity {
                 SystemBarStyle.dark(Color.TRANSPARENT));
         setContentView(R.layout.activity_web);
         store = new PairStore(this);
+        staticCache = new StaticCache(this);
         pairing = store.load();
         if (pairing == null) {
             finish();
@@ -696,6 +714,11 @@ public final class WebAppActivity extends AppCompatActivity {
             }
 
             @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                return interceptStatic(request);
+            }
+
+            @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 progress.setVisibility(View.VISIBLE);
                 progress.setProgress(0);
@@ -892,6 +915,148 @@ public final class WebAppActivity extends AppCompatActivity {
 
         webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) ->
                 handleDownload(url, contentDisposition, mimeType));
+    }
+
+    /**
+     * 静态资源的 App 侧缓存：命中直接本地返回；未命中时同步抓取并落盘。
+     *
+     * 只处理 GET + 同 origin 的 /assets/、/plugins/??、图标等；HTML、API、SSE、WS 不碰。
+     * 任何异常都返回 null，交回 WebView 自己加载，保证不会因为缓存层白屏。
+     */
+    private WebResourceResponse interceptStatic(WebResourceRequest request) {
+        if (staticCache == null || request == null) return null;
+        Uri uri = request.getUrl();
+        if (uri == null || !"GET".equalsIgnoreCase(request.getMethod())) return null;
+        if (request.getRequestHeaders() != null
+                && request.getRequestHeaders().containsKey("Range")) return null;
+        String scheme = uri.getScheme();
+        if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) return null;
+        String path = uri.getPath();
+        if (path == null || !isCacheablePath(path)) return null;
+        if (!sameOrigin(uri)) return null;
+
+        String url = uri.toString();
+        StaticCache.Entry hit = staticCache.get(url);
+        if (hit != null) {
+            try {
+                InputStream in = new FileInputStream(hit.file);
+                if (isDebugBuild()) {
+                    android.util.Log.d("Dsh2PhoneCache", "HIT " + hit.size + "B " + path);
+                }
+                return buildStaticResponse(hit.mime, in, hit.size);
+            } catch (IOException e) {
+                return null;
+            }
+        }
+        return fetchStatic(url, path);
+    }
+
+    private static boolean isCacheablePath(String path) {
+        return path.contains("/assets/")
+                || path.contains("/plugins/??")
+                || path.endsWith("/favicon.svg")
+                || path.endsWith("/manifest.webmanifest")
+                || path.endsWith("/apple-touch-icon.png");
+    }
+
+    private WebResourceResponse fetchStatic(String url, String path) {
+        final Pairing current = pairing;
+        final String direct = directFp;
+        if (current == null) return null;
+        boolean permit = false;
+        HttpsURLConnection conn = null;
+        boolean success = false;
+        try {
+            if (!cacheFetchPermits.tryAcquire(3, TimeUnit.SECONDS)) return null;
+            permit = true;
+            conn = (HttpsURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(15000);
+            conn.setInstanceFollowRedirects(true);
+            conn.setRequestProperty("Accept-Encoding", "gzip");
+            conn.setRequestProperty("Accept", "*/*");
+            conn.setRequestProperty("User-Agent", AppIdentity.userAgent(this));
+            String cookie = current.cookieHeader();
+            if (!cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);
+            if (direct != null && isDirectUrl(url)) {
+                LanDirect.pinFingerprint(conn, direct);
+            } else if (current.allowBadCert) {
+                Tls.allow(conn);
+            }
+            int status = conn.getResponseCode();
+            if (status != 200) return null;
+            String mime = normalizeMime(conn.getContentType());
+            if (!isCacheableMime(mime)) return null;
+            long length = conn.getContentLength();
+            if (length > MAX_CACHE_ENTRY_BYTES) return null;
+
+            InputStream in = conn.getInputStream();
+            String encoding = conn.getContentEncoding();
+            if (encoding != null) {
+                String lower = encoding.toLowerCase(Locale.ROOT);
+                if (lower.contains("gzip")) in = new GZIPInputStream(in);
+                else if (lower.contains("deflate")) in = new InflaterInputStream(in);
+            }
+            byte[] body = StaticCache.readAll(in, MAX_CACHE_ENTRY_BYTES);
+            if (body == null || body.length == 0) return null;
+            // 个别 HttpURLConnection 实现会「透明解压但不报告 Content-Encoding」，
+            // 用 gzip 魔数兜底，避免把压缩字节当明文喂给 WebView。
+            if (encoding == null && body.length > 2
+                    && (body[0] & 0xff) == 0x1f && (body[1] & 0xff) == 0x8b) {
+                body = StaticCache.readAll(
+                        new GZIPInputStream(new ByteArrayInputStream(body)), MAX_CACHE_ENTRY_BYTES);
+                if (body == null || body.length == 0) return null;
+            }
+            staticCache.put(url, mime, body);
+            success = true;
+            if (isDebugBuild()) {
+                android.util.Log.d("Dsh2PhoneCache", "MISS " + body.length + "B " + path);
+            }
+            return buildStaticResponse(mime, new ByteArrayInputStream(body), body.length);
+        } catch (Throwable t) {
+            if (isDebugBuild()) {
+                android.util.Log.d("Dsh2PhoneCache", "FAIL " + path + " " + t);
+            }
+            return null;
+        } finally {
+            // 成功时保留连接给 HttpURLConnection 池复用，减少首次加载的 TLS 握手。
+            if (conn != null && !success) conn.disconnect();
+            if (permit) cacheFetchPermits.release();
+        }
+    }
+
+    private WebResourceResponse buildStaticResponse(String mime, InputStream in, long length) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", mime);
+        headers.put("Content-Length", String.valueOf(length));
+        headers.put("Cache-Control", "public, max-age=31536000, immutable");
+        String encoding = needsUtf8(mime) ? "UTF-8" : null;
+        return new WebResourceResponse(mime, encoding, 200, "OK", headers, in);
+    }
+
+    private static String normalizeMime(String raw) {
+        if (raw == null) return "application/octet-stream";
+        int semi = raw.indexOf(';');
+        return (semi >= 0 ? raw.substring(0, semi) : raw).trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean isCacheableMime(String mime) {
+        if (mime == null || mime.isEmpty()) return false;
+        return mime.startsWith("text/")
+                || mime.contains("javascript")
+                || mime.contains("json")
+                || mime.startsWith("image/")
+                || mime.startsWith("font/")
+                || mime.contains("woff")
+                || mime.contains("truetype")
+                || mime.contains("opentype");
+    }
+
+    private static boolean needsUtf8(String mime) {
+        return mime.startsWith("text/")
+                || mime.contains("javascript")
+                || mime.contains("json")
+                || mime.contains("svg");
     }
 
     private void injectCookies() {

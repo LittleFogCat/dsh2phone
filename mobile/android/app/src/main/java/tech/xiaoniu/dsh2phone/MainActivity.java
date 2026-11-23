@@ -341,6 +341,7 @@ public final class MainActivity extends AppCompatActivity {
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.settings_unpair_confirm, (d, w) -> {
                     store.clear();
+                    new StaticCache(MainActivity.this).clear();
                     android.webkit.CookieManager.getInstance().removeAllCookies(null);
                     android.webkit.CookieManager.getInstance().flush();
                     pairing = null;

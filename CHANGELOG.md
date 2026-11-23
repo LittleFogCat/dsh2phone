@@ -13,6 +13,15 @@
 - **minor** — 新增向后兼容的能力：新标签/新 Remote 方法/新设置项/新的默认行为。
 - **patch** — 修复、UI 打磨、依赖升级、文档与工具调整。
 
+## [1.6.3] - 2026-11-23
+
+### 变更
+
+- Android 1.3.3（versionCode 16）：**App 侧静态资源磁盘缓存**。`shouldInterceptRequest` 只拦同 origin 的 `/assets/*`、`/plugins/??*`、图标等静态资源，按完整 URL（含 `rev`）存到 `filesDir/webcache`；DSH 升级 rev 变化自动 miss，30 天 TTL + 64 MB LRU 兜底，解除配对时清空，设置页新增「清除页面缓存」。
+- 缓存未命中时由 App 同步抓取（带 cookie、支持 gzip/直连证书锁定），失败/非 200/非静态 MIME 一律回退给 WebView，保证不会因为缓存层白屏。
+- 新增 `StaticCacheTest` 4 个用例：读写、超限淘汰、TTL 过期、清空。
+- 验证：`:app:assembleDebug`、`:app:testDebugUnitTest` 通过（全部 43 个用例，含新增 4 个）；二次冷启动的实际收益需要真机验证。
+
 ## [1.6.2] - 2026-11-23
 
 ### 变更
