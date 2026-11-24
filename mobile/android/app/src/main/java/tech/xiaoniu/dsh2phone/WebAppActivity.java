@@ -1,5 +1,6 @@
 package tech.xiaoniu.dsh2phone;
 
+import android.app.ActivityOptions;
 import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
@@ -1220,8 +1221,14 @@ public final class WebAppActivity extends AppCompatActivity {
             return;
         }
         // 回主页但不 finish：保留 WebView/页面状态，下次进入直接复用。
-        startActivity(new Intent(this, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+        // 但「把主页提到前台」会被系统当成又一次 open 过渡（新旧两层都朝左），
+        // 与进入方向相同，看着像卡了一下再滑一遍。这里显式换成 close 的动效：
+        // 网页向右滑出、主页从左侧回位，方向与进入相反。
+        Intent home = new Intent(this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        ActivityOptions closeTransition = ActivityOptions.makeCustomAnimation(
+                this, R.anim.slide_in_left, R.anim.slide_out_right);
+        startActivity(home, closeTransition.toBundle());
     }
 
     private boolean isDebugBuild() {

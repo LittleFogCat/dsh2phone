@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 主页回位：只走 25%，和网页整屏右移出画形成层次，读起来是“退回去”而不是“又开了一页”。
+     先快后慢（decelerate），和系统 open 的手感对齐。 -->
+<translate xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="280"
+    android:fromXDelta="-25%p"
+    android:toXDelta="0"
+    android:interpolator="@android:interpolator/decelerate_quint" />

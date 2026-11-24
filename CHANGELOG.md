@@ -13,6 +13,15 @@
 - **minor** — 新增向后兼容的能力：新标签/新 Remote 方法/新设置项/新的默认行为。
 - **patch** — 修复、UI 打磨、依赖升级、文档与工具调整。
 
+## [1.6.5] - 2026-11-24
+
+### 变更
+
+- Android 1.3.5（versionCode 18）：**修正进出 DSH 网页的动效方向**。返回主页原本用 `startActivity(MainActivity, FLAG_ACTIVITY_REORDER_TO_FRONT)`，系统把「把主页提到前台」按 open 转场播放，于是进入（右→左）和退出（同样右→左）方向一致，看着像滑了两遍。
+- 现在返回主页改用 `ActivityOptions.makeCustomAnimation(slide_in_left, slide_out_right)`：网页向右整屏滑出、主页从左侧回位（只走 25% 做视差，避免和整屏滑出抢注意力）；新增 `res/anim/slide_in_left.xml`、`res/anim/slide_out_right.xml`（280ms，`decelerate_quint` / `accelerate_quad`）。
+- 「不 finish、保留 WebView/页面状态以便下次直接复用」的设计保持不变，只替换这一次过渡的动画；进入方向仍用系统 open。
+- 验证：`:app:assembleDebug` + `:app:testDebugUnitTest` 通过（AGP 8.7.3 / Gradle 8.10.2 / JDK 17）。动效手感需真机确认——本机 `adb devices` 为空，未跑 `tools/mobile-e2e.mjs`。
+
 ## [1.6.4] - 2026-11-23
 
 ### 变更

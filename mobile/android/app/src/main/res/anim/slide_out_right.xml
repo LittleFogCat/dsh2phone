@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 网页退出：整屏向右移出画，方向与进入（从右滑入）相反。
+     先慢后快（accelerate），系统 close 的标准手感。 -->
+<translate xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="280"
+    android:fromXDelta="0"
+    android:toXDelta="100%p"
+    android:interpolator="@android:interpolator/accelerate_quad" />
