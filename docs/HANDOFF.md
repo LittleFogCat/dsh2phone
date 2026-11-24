@@ -558,3 +558,25 @@ node.exe 43220 入站（专用网络）的放行。e2e 当天模拟器（Pixel_9
 **产物**：`mobile/dist/dsh2phone-1.2.1-release.apk`（versionCode 11，`mobile/dist/latest.json` 记录了
 sha256/size；尚未上传服务端）。发布时把 APK 与 `latest.json` 放到 `/dsh2phone/`，并更新
 `dsh2phone-latest.apk` 指向 1.2.1。
+
+### 2026-11-24 Android 1.3.5：返回主页动效（release 已构建，待上传）
+
+**问题**：回主页用 `startActivity(MainActivity, FLAG_ACTIVITY_REORDER_TO_FRONT)`，系统把"把主页提到前台"
+按 open 转场播放，进入（右→左）与退出（同样右→左）方向一致，看起来像滑了两遍。
+
+**修复**（`WebAppActivity.backFallback()`）：改用 `ActivityOptions.makeCustomAnimation(slide_in_left,
+slide_out_right)`——网页整屏向右滑出、主页从 `-25%p` 回到 0（25% 视差，280ms，`decelerate_quint` /
+`accelerate_quad`）。两层叠加全程不露底（主页右缘 `75%+25t` 始终不落后于网页左缘 `100t`）。
+"不 finish、保留 WebView 状态以秒开"的设计不变；进入仍用系统 open 过渡。
+
+**验证**：`:app:assembleDebug` / `:app:assembleRelease`（含 `lintVitalRelease`）+ `:app:testDebugUnitTest`
+通过（AGP 8.7.3 / Gradle 8.10.2 / JDK 17，需 `JAVA_HOME` 指向 JDK 17，默认的 11 会直接失败）；
+`aapt2 dump badging` 确认 versionCode 18 / 1.3.5，资源表含 `anim/slide_in_left` / `slide_out_right`，
+dex 里有 `makeCustomAnimation` 调用；签名证书与 1.3.4 同一张（`f555f87a…`），可覆盖升级。
+**动效手感仍未真机确认**（本机 `adb devices` 为空）；建议进 DSH → 按返回回主页，确认网页右滑出、
+主页左回位，再进入时方向相反。
+
+**产物**：`mobile/dist/dsh2phone-1.3.5-release.apk`（2 405 197 B，sha256
+`ddeb3e2f8c8664dab86b3da0a9bb592558445b225c490bef5bd7369737164346`），`mobile/dist/latest.json`
+已更新到 18；**尚未上传服务端**——线上仍是 1.3.4（17），上传 APK + latest.json 后手机才会提示升级
+（`scp` 后必须 `md5sum` 校验，见上文"scp 曾静默失败"）。

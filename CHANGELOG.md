@@ -13,6 +13,15 @@
 - **minor** — 新增向后兼容的能力：新标签/新 Remote 方法/新设置项/新的默认行为。
 - **patch** — 修复、UI 打磨、依赖升级、文档与工具调整。
 
+## [1.6.6] - 2026-11-24
+
+### 变更
+
+- Android 1.3.5（versionCode 18）release APK 已打出：`mobile/dist/dsh2phone-1.3.5-release.apk`（2 405 197 B，sha256 `ddeb3e2f…`），签名与 1.3.4 同一张证书，可覆盖升级。
+- `mobile/dist/latest.json` 更新到 1.3.5 / 18；`mobile/README.md` 的版本号与 manifest 示例同步。
+- 构建验证：`:app:assembleRelease`（含 `lintVitalRelease`）通过；`aapt2 dump badging` 为 versionCode 18 / versionName 1.3.5，资源表含 `anim/slide_in_left`、`anim/slide_out_right`，dex 里有 `makeCustomAnimation` 调用。
+- 动效手感仍未真机确认（本机 `adb devices` 为空）；release 产物尚未上传服务器，线上 `/dsh2phone/latest.json` 仍是 1.3.4。
+
 ## [1.6.5] - 2026-11-24
 
 ### 变更
