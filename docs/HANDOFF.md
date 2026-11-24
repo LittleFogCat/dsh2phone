@@ -578,5 +578,9 @@ dex 里有 `makeCustomAnimation` 调用；签名证书与 1.3.4 同一张（`f55
 
 **产物**：`mobile/dist/dsh2phone-1.3.5-release.apk`（2 405 197 B，sha256
 `ddeb3e2f8c8664dab86b3da0a9bb592558445b225c490bef5bd7369737164346`），`mobile/dist/latest.json`
-已更新到 18；**尚未上传服务端**——线上仍是 1.3.4（17），上传 APK + latest.json 后手机才会提示升级
-（`scp` 后必须 `md5sum` 校验，见上文"scp 曾静默失败"）。
+已更新到 18。
+
+**发布状态（2026-11-24 18:51 已上传）**：`/usr/local/compose/www/dsh2phone/` 下 `dsh2phone-1.3.5-release.apk`、
+`latest.json`（18）、`dsh2phone-latest.apk` 均已替换；scp 后 md5 校验一致（`e94ca145…`），公网
+`/dsh2phone/latest.json` 返回 18，下载 APK 为 2 405 197 B 且 sha256 与 manifest 相符。手机端下次进入主页
+即提示升级，装完再退出网页应看到方向相反的 close 动效（手感仍待真机确认）。

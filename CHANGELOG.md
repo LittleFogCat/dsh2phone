@@ -13,6 +13,14 @@
 - **minor** — 新增向后兼容的能力：新标签/新 Remote 方法/新设置项/新的默认行为。
 - **patch** — 修复、UI 打磨、依赖升级、文档与工具调整。
 
+## [1.6.7] - 2026-11-24
+
+### 变更
+
+- Android 1.3.5 已上传生产 `/dsh2phone/`：`dsh2phone-1.3.5-release.apk`、`latest.json`（versionCode 18）、`dsh2phone-latest.apk` 均已替换，本机与远端 md5 一致（`e94ca145…`）。
+- 公网验证：`/dsh2phone/latest.json` 返回 18；下载 APK 为 2 405 197 B，sha256 与 manifest 相符；`dsh2phone-latest.apk` 同步指向 1.3.5。已装 1.3.4 及更早版本的手机进入主页即会提示升级。
+- 动效手感仍待真机复验：升级后按返回回主页，确认网页向右滑出、主页从左侧回位，再次进入方向相反。
+
 ## [1.6.6] - 2026-11-24
 
 ### 变更
@@ -20,7 +28,7 @@
 - Android 1.3.5（versionCode 18）release APK 已打出：`mobile/dist/dsh2phone-1.3.5-release.apk`（2 405 197 B，sha256 `ddeb3e2f…`），签名与 1.3.4 同一张证书，可覆盖升级。
 - `mobile/dist/latest.json` 更新到 1.3.5 / 18；`mobile/README.md` 的版本号与 manifest 示例同步。
 - 构建验证：`:app:assembleRelease`（含 `lintVitalRelease`）通过；`aapt2 dump badging` 为 versionCode 18 / versionName 1.3.5，资源表含 `anim/slide_in_left`、`anim/slide_out_right`，dex 里有 `makeCustomAnimation` 调用。
-- 动效手感仍未真机确认（本机 `adb devices` 为空）；release 产物尚未上传服务器，线上 `/dsh2phone/latest.json` 仍是 1.3.4。
+- 动效手感仍未真机确认（本机 `adb devices` 为空）；本条目提交时 release 产物尚未上传，线上 `/dsh2phone/latest.json` 还是 1.3.4（当天随后完成上传，见 1.6.7）。
 
 ## [1.6.5] - 2026-11-24
 
